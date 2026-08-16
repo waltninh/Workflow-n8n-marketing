@@ -1,0 +1,2280 @@
+{
+  "name": "SEO",
+  "nodes": [
+    {
+      "parameters": {
+        "query": "={{ $json.primary }}",
+        "options": {
+          "search_depth": "advanced",
+          "max_results": 10,
+          "include_answer": "basic",
+          "include_raw_content": true,
+          "country": "={{ $json.Tavily }}"
+        }
+      },
+      "type": "@tavily/n8n-nodes-tavily.tavily",
+      "typeVersion": 1,
+      "position": [
+        2352,
+        112
+      ],
+      "id": "8646c085-7ad1-4667-b385-2d07aa8e50e5",
+      "name": "Search"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Phân loại nguồn thành 2 tầng:\n//  PRIMARY   = nhà nước / học thuật / peer-reviewed — được dùng LÀM NGUỒN SỐ LIỆU và được link\n//  SECONDARY = tổ chức y tế / y khoa uy tín — CHỈ được link, CẤM dùng làm nguồn số liệu dinh dưỡng\n//  competitor= còn lại — không link, chỉ để nghiên cứu cấu trúc\n\nconst PRIMARY = [\n  /\\.gov(\\/|$|:)/, /\\.gov\\./, /\\.edu(\\/|$|:)/,\n  /usda\\.gov/, /nal\\.usda/, /fdc\\.nal/, /nih\\.gov/, /ncbi\\.nlm\\.nih\\.gov/,\n  /pubmed/, /pmc\\.ncbi/, /who\\.int/, /fda\\.gov/, /efsa\\.europa\\.eu/,\n  /fao\\.org/, /cdc\\.gov/, /extension\\.[a-z]+\\.edu/, /foodsafety\\.gov/,\n  /sciencedirect\\.com/, /nature\\.com/, /bmj\\.com/, /thelancet\\.com/,\n  /cochrane/, /springer/, /wiley\\.com/, /mdpi\\.com/, /frontiersin\\.org/,\n];\n\nconst SECONDARY = [\n  /mayoclinic\\.org/, /clevelandclinic\\.org/, /hopkinsmedicine\\.org/,\n  /health\\.harvard\\.edu/, /heart\\.org/, /diabetes\\.org/, /eatright\\.org/,\n  /healthline\\.com/, /webmd\\.com/, /medicalnewstoday\\.com/,\n  /nhs\\.uk/, /betterhealth\\.vic\\.gov\\.au/, /vinmec\\.com/,\n];\n\nconst results = $input.first().json.results || [];\n\nconst cleaned = results.map(r => {\n  const url = String(r.url || '').toLowerCase();\n  const tier = PRIMARY.some(re => re.test(url))\n    ? 'PRIMARY'\n    : SECONDARY.some(re => re.test(url)) ? 'SECONDARY' : 'competitor';\n  return {\n    title: r.title || '',\n    url: String(r.url || ''),\n    content: r.content || '',\n    raw: r.raw_content || '',\n    tier,\n  };\n});\n\n// Danh sách snippet cho outline/fact-check\nconst list = cleaned.map((r, i) =>\n  `${i + 1}. ${r.title}\\nURL: ${r.url}\\n${r.content}\\n`\n).join('\\n---\\n');\n\n// raw_content: ưu tiên PRIMARY > SECONDARY > còn lại\nconst rank = { PRIMARY: 0, SECONDARY: 1, competitor: 2 };\nconst withRaw = cleaned.filter(r => r.raw).sort((a, b) => rank[a.tier] - rank[b.tier]);\nconst rawExcerpts = withRaw.slice(0, 3).map((r, i) =>\n  `SOURCE ${i + 1} [${r.tier}]: ${r.title}\\nURL: ${r.url}\\n${String(r.raw).slice(0, 4000)}`\n).join('\\n\\n=====\\n\\n');\n\nconst sourcesList = cleaned.map((r, i) =>\n  `${i + 1}. [${r.tier}] ${r.title} — ${r.url}`\n).join('\\n');\n\nreturn [{\n  json: {\n    total: cleaned.length,\n    primary_count: cleaned.filter(r => r.tier === 'PRIMARY').length,\n    secondary_count: cleaned.filter(r => r.tier === 'SECONDARY').length,\n    list,\n    raw_excerpts: rawExcerpts || 'No raw excerpts available — write qualitatively and do not invent numbers.',\n    sources_list: sourcesList,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2672,
+        112
+      ],
+      "id": "dedb25ce-bb64-480f-b09a-c7db984590a3",
+      "name": "Code in JavaScript5"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.list }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You are a senior SEO content strategist for TMICORP — a Vietnamese manufacturer and exporter of processed agricultural products (canned, dried, frozen, pickled, sauces, spices).\n\nVerified TMICORP facts (reference only — do not invent beyond this):\n- Full name: Toan My International Trading Investment JSC. (TMICORP)\n- Certifications: ISO 22000, HACCP, FDA registered, BRC FOOD, HALAL\n- Brands: TMI Foods, Ecovita, Sunrich, SunVitD\n- Services: OEM/ODM manufacturing with low MOQ\n\nPrimary keyword: {{ $('Get row(s) in sheet1').first().json.primary }}\nSecondary keywords: {{ $('Get row(s) in sheet1').first().json.secondary }}\nProvided title (may be empty): {{ $('Get row(s) in sheet1').first().json.Title }}\nSearch intent: {{ $('Get row(s) in sheet1').first().json['Search Intent'] }}\n\nVerified USDA nutrition data available for this product (may be empty):\n{{ $('Format USDA Nutrition').first().json.usda_table }}\n\nYou are given {{ $json.total }} competitor articles currently ranking for the primary keyword in the US market. Each item includes title, URL, and content:\n\n{{ $json.list }}\n\nSTEP 0 — CONFIRM SEARCH INTENT FORMAT\nThe Search intent field above indicates one of four query intent types: Informational (the reader wants to learn/understand — best served by a guide, how-to, or definition-style article), Navigational (the reader wants a specific brand/page — not applicable to blog content), Commercial (the reader is researching before buying — best served by comparisons, pros/cons, or \"best options\" framing), or Transactional (the reader wants to act/buy now — best served by content that leads clearly toward an action). Before building the outline, confirm the outline's framing matches this intent:\n- If Informational: keep the default guide/how-to structure below.\n- If Commercial: make sure at least one section frames options, comparisons, or pros/cons rather than pure how-to steps.\n- If Transactional: make sure the outline leads toward a clear next action (e.g. where to source the product) rather than pure education.\nDo not change the outline's core topic — only adjust its angle/framing to match the intent type.\n\nSTEP 1 — TITLE\n- If the Provided title above is non-empty, return it EXACTLY as given in the \"title\" field — do not modify it.\n- If the Provided title is empty, write the best SEO title yourself based on the competitor titles you studied: under 60 characters, primary keyword at or near the front, format matching the search intent. Do NOT use a number/listicle format unless your own outline genuinely contains exactly that many distinct, non-overlapping items — the number in the title must equal the real count in the outline.\n\nSTEP 2 — OUTLINE\nStudy the heading patterns across all competitor articles. Produce an H2/H3 outline that covers every subtopic competitors cover, ordered the way that best answers the primary keyword's intent (usually: direct answer first, then method/steps, then details, then edge cases).\n\nHEADINGS MUST BE READER-FACING TEXT ONLY. The \"heading\" field is printed verbatim on the published page, so it must read as a natural title a human editor would write. It must NEVER contain instructions to the writer, production notes, format directives, keyword annotations, or framing labels — nothing like \"(render table)\", \"(small-fruit/berry framing)\", \"(use USDA data)\", \"(target keyword: ...)\". Never append a keyword in parentheses to a heading just to place that keyword. All guidance for the writer belongs in the \"notes\" field, which is never published. Before returning, re-read every heading and delete any parenthetical that is not natural reader-facing language.\n\nDO NOT CREATE ONE SECTION PER SECONDARY KEYWORD. Secondary keywords are phrasings to cover, not a section list. Group synonymous or near-synonymous keywords into a SINGLE existing section — for example \"benefits of X\", \"X berry benefits\", \"X fruit benefits\" and \"health benefits of X\" are all one topic and get one section. Only create a separate section when it would contain genuinely distinct information that no other section covers. If a candidate section would mostly restate another, drop it and note in the neighbouring section's notes that the keyword should be woven in there instead. Do not pad the outline to hit a count — merge overlapping sections that rely on the same underlying mechanism.\n\nDEPTH SIGNALS IN NOTES. For every section, the notes must tell the writer what specific substance to add BEYOND restating a nutrition figure — for example a comparison that anchors a number against a familiar food or the Daily Value, a practical threshold, how processing or storage changes the outcome, or an honest limitation where a number sounds impressive but is actually modest. Also mark each section's intended weight as \"depth: primary\" (a well-evidenced, reader-important section, roughly 100–150 words) or \"depth: minor\" (a small or tradition-only section, roughly 60–90 words), and use both labels across the outline so the article does not come out uniformly sized. If a candidate section has no substance to offer beyond restating the table, do not include it at all.\n\nIf USDA nutrition data is present above, the outline MUST include a dedicated nutrition section. Its heading must be plain reader-facing text (e.g. \"Longan nutrition facts per 100 g\"), and the instruction to render the USDA table belongs in that section's notes.\n\nMANDATORY FINAL SECTION — FAQ:\nThe outline must ALWAYS end with an H2 section titled \"Frequently asked questions\" (or a close natural variant). Under it, add 4–6 H3 sections, each an actual question a reader would type, derived from what competitor articles repeatedly address and from the secondary keywords. Each H3 heading must be a complete question ending in a question mark. A question must NOT duplicate a topic a main body section already fully answers — check each question against the body outline before including it.\n\nSTEP 3 — ENTITY COVERAGE\nList every concept, term, method, or reference that competitor articles consistently mention. This is a checklist the writer must touch on, not exact phrases to copy.\n\nOUTPUT\nReturn JSON only, no text outside JSON, in this exact structure:\n\n{\n  \"title\": \"string\",\n  \"outline\": [\n    { \"heading\": \"string\", \"level\": \"H2 or H3\", \"notes\": \"what this section should cover\" }\n  ],\n  \"entities\": [\"string\", ...]\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2960,
+        -160
+      ],
+      "id": "47c2951c-5f46-4483-9581-3a9809650d15",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Marketing plan",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1827161699,
+          "mode": "list",
+          "cachedResultName": "KEY WORD SEO",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1827161699"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "Processing"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        320,
+        512
+      ],
+      "id": "1645cf6f-fc6a-40e5-a7e8-43fd497272bc",
+      "name": "Get row(s) in sheet1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.list }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You are a senior SEO fact-checker for TMICORP — a Vietnamese \nmanufacturer and exporter of processed agricultural products (canned, \ndried, frozen, pickled, sauces, spices).\n\nVerified TMICORP facts (use ONLY these — do not invent certifications, \nlab data, test results, or capabilities beyond what's listed here):\n- Full name: Toan My International Trading Investment JSC. (TMICORP)\n- Location: Hanoi, Vietnam (business registered April 2019)\n- Certifications: ISO 22000, HACCP, FDA registered, BRC FOOD, HALAL\n- Products: canned, dried, frozen, pickled fruits & vegetables, sauces, \n  spices, Japonica rice\n- Brands: TMI Foods, Ecovita, Sunrich, SunVitD\n- Services: OEM/ODM manufacturing with low MOQ\n- Recognition: Top 32 outstanding Vietnamese enterprises selected for \n  EU export via e-commerce; exhibited at Glorious Spring Fair 2026\n\nPrimary keyword: {{ $('Get row(s) in sheet1').first().json.primary }}\n\nAUTHORITATIVE REFERENCE DATA — USDA FoodData Central (may be empty):\n{{ $('Format USDA Nutrition').first().json.usda_table }}\n\nYou are given {{ $json.total }} competitor articles currently ranking \nfor this keyword in the US market:\n\n{{ $json.list }}\n\nSTEP 1 — CONFLICTING DATA\nScan all competitor content for numeric claims (durations, temperatures, \nquantities, nutrient amounts, calories) about the same fact.\n\nFirst, compare every competitor nutrition figure against the USDA \nreference data above. If a competitor states a nutrient or calorie value \nthat differs materially from USDA, that IS a conflict and you must list \nit, with recommended_approach stating that USDA is the value to use.\n\nThen list any remaining conflicts between two or more competitor sources. \nFor each conflict report:\n- fact: what the number refers to\n- values_found: each source's domain and the value they state\n- recommended_approach: which value to lead with and why (USDA and other \n  government/academic sources always outrank hospital blogs, health \n  portals and lifestyle sites; if it's a quality-vs-safety distinction — \n  e.g. \"safe indefinitely\" vs \"best quality for X months\" — explain that \n  distinction explicitly rather than picking one number)\n\nOnly include conflicts that would materially confuse a reader or hurt \ncredibility if left unresolved — skip trivial wording differences. If \nonly one source mentions a given fact and USDA has no equivalent value, \nthat is not a conflict — do not list it.\n\nIf no genuine conflicts exist, return an empty array.\n\nSTEP 2 — E-E-A-T ANGLE\nBased on the verified TMICORP facts above and what competitor articles \nare missing or only covering from a consumer angle, state:\n- who: TMICORP's actual credentials (use only the certifications and \n  facts listed above)\n- how: what general manufacturer knowledge (packaging, cold-chain, \n  quality control practices) TMICORP would plausibly have given its \n  certifications — without claiming specific proprietary test data, \n  lab results, or research that isn't confirmed above\n- why_this_article: the unique angle a certified manufacturer can add \n  for THIS specific topic that none of the competitor articles \n  currently offer\n\nGround this in a specific gap you observed in the competitor content \nabove — reference what they say or fail to say. Do not write generic \nmanufacturer boilerplate, and do not fabricate any certification, test, \nor capability not explicitly listed in the verified facts.\n\nOUTPUT\nReturn JSON only, no text outside JSON, in this exact structure:\n\n{\n  \"conflicts\": [\n    { \n      \"fact\": \"string\", \n      \"values_found\": [{ \"source\": \"string\", \"value\": \"string\" }], \n      \"recommended_approach\": \"string\" \n    }\n  ],\n  \"eeat_angle\": {\n    \"who\": \"string\",\n    \"how\": \"string\",\n    \"why_this_article\": \"string\"\n  }\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2944,
+        336
+      ],
+      "id": "020d3f03-f3c0-4485-8282-9a3bc5aa604d",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-5-mini",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        2976,
+        48
+      ],
+      "id": "b2758d65-ee2f-488c-ac66-12f0c617e5b0",
+      "name": "OpenRouter Chat Model"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Write the full SEO article now, following the brief below exactly.\n\nOutline:\n{{ JSON.stringify($json.outline) }}\n\nEntities to cover:\n{{ JSON.stringify($json.entities) }}\n\nConflicting data to reconcile (use the recommended_approach for each):\n{{ JSON.stringify($json.conflicts) }}\n\nE-E-A-T angle to weave in naturally:\n{{ JSON.stringify($json.eeat_angle) }}\n\nVERIFIED USDA NUTRITION DATA (the ONLY acceptable source for nutrient and calorie figures — may be empty):\n{{ $('Format USDA Nutrition').first().json.usda_table }}\n\nSources (only link to items marked [AUTHORITY]; max 2 links per domain):\n{{ $('Code in JavaScript5').first().json.sources_list }}\n\nAdditional context excerpts from research:\n{{ $('Code in JavaScript5').first().json.raw_excerpts }}\n\nTitle: {{ $json.title }}\nPrimary keyword: {{ $('Get row(s) in sheet1').first().json.primary }}\nSecondary keywords: {{ $('Get row(s) in sheet1').first().json.secondary }}",
+        "options": {
+          "systemMessage": "You are a senior SEO content writer for TMICORP — a Vietnamese manufacturer and exporter of processed agricultural products (canned, dried, frozen, pickled, sauces, spices), certified ISO 22000, HACCP, FDA registered, BRC FOOD, and HALAL.\n\nYou will be given a complete content brief: an outline (H2/H3 headings with notes), a list of entities to cover, resolved data conflicts, an E-E-A-T angle, verified USDA nutrition data, a tiered source list, and research excerpts. Write the full article by following this brief closely.\n\nWRITING RULES\n\n1. Follow the outline exactly, in the given order, using the heading level provided.\n\n2. HEADINGS ARE READER-FACING ONLY. Never copy production notes, format directives or keyword annotations from the brief into a heading. If an outline heading contains a parenthetical that is an instruction or a framing label rather than natural language — for example \"(render table)\", \"(small-fruit/berry framing)\", \"(use USDA data)\", \"(longan benefits for skin)\" — strip that parenthetical and publish only the clean human-readable part. Short clarifying parentheticals a magazine would print, such as \"(vitamin C)\", may stay. Never append a keyword in parentheses to a heading.\n\n3. Write in clear, natural US English (fiber, flavor, color — never fibre/flavour). Standard ASCII hyphens only.\n\n4. ANSWER-FIRST STRUCTURE: the very FIRST sentence under every H2 and H3 must be a standalone, quotable direct answer that fully answers that section's implied question, including a concrete number where the data allows. Do NOT open a section with a transitional or scene-setting clause — no \"Before we get into...\", \"If you're wondering...\", \"Let's get practical\", \"Even good things have guardrails\", \"Bringing it together\". Connective phrasing belongs in the SECOND sentence or later.\n\n5. SECTION DEPTH — EVERY SECTION MUST EARN ITS LENGTH.\n   Target lengths:\n   - H3 for a well-evidenced primary benefit: 100–150 words\n   - H3 for a minor or weakly-evidenced benefit: 60–90 words\n   - H2 pillar sections (nutrition, risks, how to eat, comparison): 200–350 words\n   - FAQ answers: 40–60 words\n   These are targets, not quotas. NEVER add filler, restatement, or hedging sentences to reach a number. A section with only 60 words of real substance stays at 60 words.\n\n   DELIBERATELY VARY LENGTH. Sections must NOT all come out the same size. A benefit backed by solid evidence deserves noticeably more space than one resting on tradition alone, and that visible difference is itself an honest signal to the reader. If every section in your draft is within ten words of the same length, you are writing to a template — go back and expand the well-supported ones and cut the thin ones.\n\n6. NO SECTION MAY MERELY RESTATE THE NUTRITION TABLE. Repeating a figure the reader already saw, then attaching a generic health claim, is not content. Every H3 must add at least one thing that is NOT in the table. Good ways to add real value:\n   - a comparison that anchors the number against a familiar food or against the Daily Value, so the reader knows whether it is actually a lot\n   - a practical threshold: how much to eat, who needs more, when it matters\n   - a condition that changes the outcome: how drying, canning, heat or storage affects that nutrient, and which form to choose as a result\n   - an honest limitation: a nutrient that sounds impressive but contributes only a small share of daily needs, or evidence that is preclinical only\n   Prefer the honest limitation over an inflated claim — saying plainly that a number is modest builds more trust than overselling it.\n   Only use comparison figures that appear in the USDA data, the conflicts data, or the research excerpts. Never invent a comparison number from memory.\n\n7. NUTRITION FIGURES COME FROM USDA ONLY. If verified USDA nutrition data is provided, reproduce it as a Markdown table in the nutrition section, copying the values exactly, and cite it using the ready-to-use Markdown citation supplied with it — paste that Markdown link as given; never print a bare URL. Every calorie, macronutrient, vitamin and mineral figure anywhere in the article must match that USDA table — never use a competing figure from a health portal, hospital blog or lifestyle site for these, even if the research excerpts state one. If a nutrient is absent from the USDA table, do not claim the food contains a notable amount of it. If no USDA data is provided, do not build a nutrition table and describe nutrients qualitatively instead.\n\n8. OTHER NUMBERS: for non-nutrition figures (storage durations, temperatures, processing conditions), use the conflicts data and research excerpts, and attribute them. Never invent a number that is not in the provided data.\n\n9. CITATIONS AND SOURCE TIERS. The source list marks each source [PRIMARY], [SECONDARY] or [competitor].\n   - [PRIMARY] (government, academic, peer-reviewed): may be used both as a source for facts and figures, and linked.\n   - [SECONDARY] (reputable medical organisations): may be LINKED for context and general statements, but must NEVER be the source of a nutrition figure.\n   - [competitor]: never link.\n   Hard limits across the whole article: a MAXIMUM of 2 links per domain, and a MINIMUM of 2 distinct domains. If only one usable source domain exists, link the USDA citation as a second domain. Once a domain has 2 links, state further facts without linking. Never fabricate or modify URLs.\n\n10. ANCHOR TEXT must describe what the reader will find — the publishing organisation, the study subject, or the specific data. Write \"USDA FoodData Central\", \"a 2021 mouse study on longan arillus and gut health\". Never use \"study link\", \"click here\", \"source\", \"read more\", \"here\", or a bare URL.\n\n11. INTERNAL CONSISTENCY: any quantity you state (serving size, duration, temperature, count, nutrient amount) must be identical everywhere it appears, including in the FAQ.\n\n12. Cover every item in the entities list somewhere in the article, integrated naturally. Never insert an entity term as a bracketed tag inside a sentence. Secondary keywords are woven into existing paragraphs — do not write a short extra section whose only purpose is to place a keyword, and never write a section that restates another section.\n\n13. For each item in conflicts, follow its recommended_approach precisely.\n\n14. Weave in the E-E-A-T angle naturally, in at most 2 places total. Do NOT dedicate the article to company promotion. Do not invent any certification, capability, or test data beyond the eeat_angle. The closing mention should read as a credibility note, not a sales pitch — avoid \"can advise on\", \"contact us for\", \"from manufacturers like TMICORP\", or vague claims that the company \"emphasizes\" something.\n\n15. Naturally include the primary and secondary keywords — do not keyword-stuff.\n\n16. FAQ SECTION: write each H3 exactly as a question ending in a question mark, and under it a plain answer paragraph of 1–3 sentences whose FIRST sentence directly answers the question. No \"Q:\" or \"A:\" prefixes. Do not answer a question the body already fully covered — if the outline handed you a duplicate, replace it with a genuinely different question a reader would ask.\n\n17. Do not include a title (H1) in the body — start directly with the first H2.\n\nOUTPUT FORMAT\nReturn the article in Markdown, using ## for H2 and ### for H3. No preamble, no meta-commentary — output only the article itself."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        3856,
+        112
+      ],
+      "id": "fb826af3-1ec4-40bc-8cad-1ed7f999f663",
+      "name": "AI Agent2"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"title\": \"Can You Freeze Canned Pineapple? Storage & Shelf Life Guide\",\n  \"outline\": [\n    { \"heading\": \"Can You Freeze Canned Pineapple?\", \"level\": \"H2\", \"notes\": \"Direct yes/no answer in first 1-2 sentences, cite USDA\" },\n    { \"heading\": \"How to Freeze Canned Pineapple Correctly\", \"level\": \"H2\", \"notes\": \"Step by step: drain, par-freeze, transfer, label\" },\n    { \"heading\": \"How Long Does It Last in the Freezer?\", \"level\": \"H2\", \"notes\": \"Present the reconciled duration range from Agent1's conflict analysis\" }\n  ],\n  \"entities\": [\"par-freezing\", \"airtight container\", \"USDA guidance\", \"best-by date vs safety date\"]\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        3104,
+        48
+      ],
+      "id": "814a1c4a-2a2f-410b-b87b-58aa725dc215",
+      "name": "Structured Output Parser1"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"conflicts\": [\n    {\n      \"fact\": \"How long frozen canned pineapple stays good\",\n      \"values_found\": [\n        { \"source\": \"jolionfoods.com\", \"value\": \"6-12 months\" },\n        { \"source\": \"stilltasty.com\", \"value\": \"1-2 months (best quality)\" }\n      ],\n      \"recommended_approach\": \"Lead with StillTasty's 1-2 months as 'best quality' since it's a food-safety reference site, then note it remains safe indefinitely if kept frozen, matching the manufacturer's longer estimate as a maximum range\"\n    }\n  ],\n  \"eeat_angle\": {\n    \"who\": \"TMICORP, certified canned fruit manufacturer\",\n    \"how\": \"Direct experience in commercial packing and cold-chain storage\",\n    \"why_this_article\": \"Can explain why shelf-life estimates vary based on packing medium and can integrity — insight lifestyle blogs don't have\"\n  }\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        3360,
+        464
+      ],
+      "id": "e0b60aaa-1206-4e64-904a-c0e3fbd9bc3d",
+      "name": "Structured Output Parser2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gộp output của AI Agent (title+outline+entity) và AI Agent1 (conflict+eeat)\nconst items = $input.all();\n\nif (items.length < 2) {\n  throw new Error(`Merge chỉ nhận được ${items.length} item — cần đúng 2 (từ AI Agent và AI Agent1). Kiểm tra lại node Merge phía trước.`);\n}\n\nconst a = items[0]?.json?.output ?? items[0]?.json ?? {};\nconst b = items[1]?.json?.output ?? items[1]?.json ?? {};\n\n// Title: ưu tiên title do outline agent quyết (đã tôn trọng Title trong sheet nếu có),\n// fallback về Title gốc trong sheet nếu agent không trả về\nconst sheetTitle = $('Get row(s) in sheet1').first().json.Title || '';\nconst title = a.title || b.title || sheetTitle;\n\nif (!title) {\n  throw new Error('Không có title — outline agent không trả về title và cột Title trong sheet cũng trống.');\n}\n\nreturn [{\n  json: {\n    title,\n    outline: a.outline || b.outline || [],\n    entities: a.entities || b.entities || [],\n    conflicts: b.conflicts || a.conflicts || [],\n    eeat_angle: b.eeat_angle || a.eeat_angle || {},\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        112
+      ],
+      "id": "9de02495-e6af-43c1-b017-7489783caff0",
+      "name": "Code in JavaScript7"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3312,
+        112
+      ],
+      "id": "b4ffc15e-5a07-4fd5-8393-598a8fad757b",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.output }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You are an SEO metadata generator for TMICORP, a Vietnamese manufacturer/exporter of processed agricultural products.\n\nThe article's chosen title (already decided from SERP research) is:\n{{ $('Code in JavaScript7').first().json.title }}\n\nYou will receive the full blog article (Markdown). Based on its content, generate:\n- slug: URL-friendly slug, lowercase, hyphens, 3-6 words, keyword-first, under 60 characters, no stopwords, derived from the chosen title above\n- title_seo: SEO title tag, under 70 characters, keyword near the front. It MUST be the chosen title above, or a lightly trimmed/adjusted variant of it if it exceeds 70 characters — never a completely different title.\n- meta_description: SEO meta description, 140-160 characters, includes primary keyword, compelling, accurately reflects the content\n- tags: 3-6 relevant tags separated by commas, lowercase, based on the article's topics\n- excerpt: A 1-2 sentence summary/intro (30-50 words) suitable as a post excerpt/introduction field, written to hook the reader — do not just copy the first sentence of the article verbatim\n\nDo not invent facts not present in the article. Return JSON only, no text outside JSON, matching the schema exactly."
+        }
+      },
+      "id": "b9c28402-113c-4e1a-86cd-422d64d0e452",
+      "name": "AI Agent Meta",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        4720,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"slug\": \"can-you-freeze-canned-pineapple\",\n  \"title_seo\": \"Can You Freeze Canned Pineapple? Full Storage Guide\",\n  \"meta_description\": \"Learn whether you can freeze canned pineapple safely, how long it lasts, and the right way to store it for the best flavor and texture.\",\n  \"tags\": \"canned pineapple, food storage, freezing fruit, shelf life\",\n  \"excerpt\": \"Wondering if you can freeze canned pineapple? Yes — here's exactly how to do it safely and keep the best flavor and texture.\"\n}"
+      },
+      "id": "677ed2dc-9284-4ee3-ae56-52bbac62c18b",
+      "name": "Structured Output Parser3",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        5072,
+        560
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "3ced7780-468e-4e7a-95aa-9ca1ec3470bb",
+      "name": "Merge2",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        5072,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gộp HTML + Meta, chuẩn hóa ký tự, chèn block E-E-A-T, JSON-LD schema và QA audit\nconst items = $input.all();\n\nif (items.length < 2) {\n  throw new Error(`Merge2 chỉ nhận được ${items.length} item — cần đúng 2 (từ Markdown to HTML và AI Agent Meta).`);\n}\n\nconst htmlItem = items.find(i => typeof i.json.output === 'string');\nconst metaItem = items.find(i => i.json.output && typeof i.json.output === 'object');\n\nlet html = htmlItem?.json?.output || '';\nconst meta = metaItem?.json?.output || {};\n\nconst chosenTitle = $('Code in JavaScript7').first().json.title || meta.title_seo || '';\n\n// 1. Chuẩn hóa ký tự + bỏ prefix Q:/A: hiển thị trong FAQ\nhtml = html\n  .replace(/\\u2011/g, '-')\n  .replace(/\\u00A0/g, ' ')\n  .replace(/<h3>Q:\\s*/g, '<h3>')\n  .replace(/<p>A:\\s*/g, '<p>');\n\n// 2. Thông tin tác giả từ sheet\nconst row = $('Get row(s) in sheet1').first().json || {};\nconst author = row.Author || row.author || 'TMICORP Editorial Team';\nconst reviewer = row.Reviewer || row.reviewer || '';\nconst today = new Date().toISOString().slice(0, 10);\n\n// 3. Phát hiện YMYL\nconst ymylHint = String(row.is_ymyl || row.YMYL || '').toLowerCase().trim();\nconst isYmyl = ymylHint\n  ? ['1', 'yes', 'true', 'y', 'x'].includes(ymylHint)\n  : /\\b(health benefit|nutrition|nutrient|diabet|pregnan|calorie|vitamin|blood sugar|allerg)\\w*/i.test(html);\n\nconst eeatTop =\n  `<div class=\"post-meta\"><p><strong>By ${author}</strong>` +\n  (reviewer ? ` | Reviewed by ${reviewer}` : '') +\n  ` | Last updated: ${today}</p></div>`;\n\nconst disclaimer = isYmyl\n  ? `<div class=\"disclaimer\"><p><em>This article is for general informational purposes only and is not medical advice. Consult a qualified healthcare professional for guidance on your individual situation.</em></p></div>`\n  : '';\n\nconst warn = [];\n\n// 4. AUDIT CITATION — cap 2 link/domain, tối thiểu 2 domain\nconst domainCounts = {};\nfor (const m of html.matchAll(/href=\"https?:\\/\\/([^\\/\"?]+)/g)) {\n  const d = m[1].replace(/^www\\./, '').toLowerCase();\n  domainCounts[d] = (domainCounts[d] || 0) + 1;\n}\nconst domainList = Object.keys(domainCounts);\nconst overCap = Object.entries(domainCounts).filter(([, c]) => c > 2).map(([d, c]) => `${d}(${c})`);\nif (overCap.length) warn.push(`Vượt cap 2 link/domain: ${overCap.join(', ')}`);\nif (domainList.length < 2) warn.push(`Chỉ có ${domainList.length} domain — cần tối thiểu 2`);\n\n// 5. AUDIT ANCHOR TEXT chung chung\nconst badAnchors = [];\nfor (const m of html.matchAll(/<a [^>]*>([^<]+)<\\/a>/g)) {\n  const t = m[1].trim();\n  if (/^(study link|click here|here|source|link|read more|https?:)/i.test(t)) badAnchors.push(t);\n}\nif (badAnchors.length) warn.push(`Anchor text chung chung: ${badAnchors.join(', ')}`);\n\n// 6. AUDIT USDA\nconst usdaTable = $('Format USDA Nutrition').first().json.usda_table;\nif (usdaTable) {\n  if (!/href=\"[^\"]*fdc\\.nal\\.usda\\.gov/i.test(html)) warn.push('Có dữ liệu USDA nhưng bài không dẫn LINK USDA (có thể đang ở dạng URL trần)');\n  if (!/<table/i.test(html)) warn.push('Có dữ liệu USDA nhưng bài không có bảng dinh dưỡng');\n}\n\n// 7. AUDIT HEADING — phát hiện chỉ dẫn nội bộ lọt vào tiêu đề\nconst KEYWORDY = /\\((?:render|use|using|target|insert|include|add|note|format|framing|keyword|placement|angle|H[123])\\b[^)]*\\)|\\([^)]*\\b(?:framing|render|keyword|placement)\\b[^)]*\\)/i;\nconst dirtyHeadings = [];\nfor (const m of html.matchAll(/<h[23]>([^<]+)<\\/h[23]>/g)) {\n  const h = m[1].trim();\n  let dirty = KEYWORDY.test(h);\n  if (!dirty) {\n    for (const p of h.matchAll(/\\(([^)]+)\\)/g)) {\n      if (p[1].trim().split(/\\s+/).length >= 3) { dirty = true; break; }\n    }\n  }\n  if (dirty) dirtyHeadings.push(h);\n}\nif (dirtyHeadings.length) warn.push(`Heading có chỉ dẫn/keyword lọt: ${dirtyHeadings.join(' | ')}`);\n\n// 8. JSON-LD: Article + FAQPage\nconst faqs = [];\nfor (const m of html.matchAll(/<h3>([^<]*\\?)<\\/h3>\\s*<p>([^<]+)<\\/p>/g)) {\n  faqs.push({ q: m[1].trim(), a: m[2].trim() });\n}\nif (faqs.length === 0) warn.push('Không tìm thấy FAQ — thiếu FAQPage schema');\n\nconst org = {\n  '@type': 'Organization',\n  name: 'TMICORP - Toan My International Trading Investment JSC.',\n  address: { '@type': 'PostalAddress', addressLocality: 'Hanoi', addressCountry: 'VN' },\n  hasCredential: ['ISO 22000', 'HACCP', 'FDA registered', 'BRC FOOD', 'HALAL'].map(c => ({\n    '@type': 'EducationalOccupationalCredential', name: c\n  })),\n};\n\nconst ld = [{\n  '@context': 'https://schema.org',\n  '@type': 'Article',\n  headline: meta.title_seo || chosenTitle,\n  description: meta.meta_description || '',\n  datePublished: today,\n  dateModified: today,\n  author: reviewer\n    ? [{ '@type': 'Person', name: author }, { '@type': 'Person', name: reviewer, jobTitle: 'Reviewer' }]\n    : { '@type': 'Organization', name: author },\n  publisher: org,\n}];\n\nif (faqs.length > 0) {\n  ld.push({\n    '@context': 'https://schema.org',\n    '@type': 'FAQPage',\n    mainEntity: faqs.map(f => ({\n      '@type': 'Question',\n      name: f.q,\n      acceptedAnswer: { '@type': 'Answer', text: f.a },\n    })),\n  });\n}\n\nconst ldScript = `<script type=\"application/ld+json\">${JSON.stringify(ld)}</script>`;\nconst finalHtml = eeatTop + '\\n' + disclaimer + '\\n' + html + '\\n' + ldScript;\n\nconst wordCount = finalHtml.replace(/<script[\\s\\S]*?<\\/script>/g, '').replace(/<[^>]*>/g, ' ').split(/\\s+/).filter(Boolean).length;\n\nreturn [{\n  json: {\n    html: finalHtml,\n    chosen_title: chosenTitle,\n    slug: meta.slug || '',\n    title_seo: meta.title_seo || '',\n    meta_description: meta.meta_description || '',\n    tags: meta.tags || '',\n    excerpt: meta.excerpt || '',\n    word_count: wordCount,\n    faq_count: faqs.length,\n    is_ymyl: isYmyl,\n    citation_domains: domainCounts,\n    qa_warnings: warn.length ? warn.join(' | ') : 'OK',\n  }\n}];"
+      },
+      "id": "7468a8c4-0303-4853-b03e-42e48fc4d8b2",
+      "name": "Code in JavaScript8",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5296,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "createFromText",
+        "content": "={{ $json.html }}",
+        "name": "={{ $json.slug }}.html",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      },
+      "id": "fda01109-86fa-4a1d-b942-00a6d13472a8",
+      "name": "Create HTML file in Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        5488,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.output }}",
+        "options": {
+          "systemMessage": "You are a senior human food writer rewriting a mechanical AI-generated SEO draft into a natural, flowing article — the kind a real writer at a food publication would produce, not a spec sheet.\n\nYour job is to fix structure, depth and phrasing WITHOUT losing any facts, numbers, links, or tables.\n\nCORE REWRITE RULES\n\n1. CLEAN THE HEADINGS FIRST. Every heading is published verbatim, so strip any parenthetical that is a production note, format directive, or keyword annotation rather than natural reader-facing language — for example \"(render table)\", \"(small-fruit/berry framing)\", \"(use USDA data)\", \"(longan benefits for skin)\". Short clarifying parentheticals a magazine would print, such as \"(vitamin C)\", may stay.\n\n2. DELETE RESTATEMENT SECTIONS. If a section's content mostly repeats another section — especially a short section that exists only to place a keyword variant, and doubly so if it openly says the benefits are \"the same\" as elsewhere — delete it entirely and fold any unique detail plus its keyword into the section it duplicates. Do the same for a FAQ question the body already fully answers: remove it and, if fewer than 4 questions remain, promote a genuinely distinct reader question in its place.\n\n3. FIX UNIFORM SECTION LENGTH — THIS IS A PRIMARY TASK, NOT AN OPTIONAL POLISH.\n   Read the draft and check whether the sections are all roughly the same size. Mechanical drafts typically give every H3 exactly two sentences of about forty words, which reads as machine-generated and leaves the core of the article thin. If you see that pattern, you must break it:\n   - Identify which sections rest on the strongest evidence or matter most to the reader, and DEEPEN those to roughly 100–150 words.\n   - Leave genuinely minor or tradition-only sections short, around 60–90 words. Their brevity is honest.\n   - H2 pillar sections (nutrition, risks, how to eat, comparisons) should land around 200–350 words.\n   - FAQ answers stay at 40–60 words.\n   The finished article must show clearly uneven section lengths. Never expand a section by adding filler, restatement, hedging, or a summary sentence — if a section has nothing more of substance to say, leave it short.\n\n4. WHEN DEEPENING A SECTION, ADD SUBSTANCE, NOT WORDS. A section that merely repeats a figure from the nutrition table and attaches a generic health claim has not earned its place. Each deepened section must gain at least one element that is NOT in the table:\n   - a comparison anchoring the number against a familiar food or against the Daily Value, so the reader learns whether it is actually a lot\n   - a practical threshold: how much to eat, who needs more, when it matters\n   - a condition that changes the outcome: how drying, canning, heat or storage affects that nutrient, and which form to choose\n   - an honest limitation: a nutrient that sounds impressive but supplies only a small share of daily needs, or evidence that is preclinical only\n   Prefer the honest limitation over an inflated claim. CRITICAL: you may only use figures that already appear somewhere in the draft. Never introduce a comparison number, percentage, or study finding that is not already in the article — if you cannot deepen a section without inventing data, leave it short.\n\n5. CONVERT BULLET EXPLANATIONS INTO PROSE. Any bullet list where each item is a labeled mini-paragraph becomes a flowing paragraph with ideas connected by transitions. Keep true lists only for a genuine sequential process (numbered list) or a short scannable list of items under ~5 words each.\n\n6. NEVER DESCRIBE THE SAME PROCESS TWICE IN TWO FORMATS.\n\n7. INTERNAL CONSISTENCY CHECK. Scan for contradictory numbers — serving sizes, durations, temperatures, nutrient amounts — and reconcile to ONE value used everywhere, including in the FAQ. Verify that any nutrient the prose claims the food contains actually appears in the nutrition table; if not, soften or remove the claim.\n\n8. PRESERVE ALL DATA ELEMENTS EXACTLY: keep every Markdown link with its exact URL, keep every Markdown table intact, keep every number and certification unchanged except when resolving a contradiction under rule 7.\n\n9. DO NOT ADD OPENING TRANSITIONS TO SECTIONS. The first sentence under each H2 and H3 is a standalone, quotable direct answer. It must STAY first, with its numbers, and must not be preceded by any scene-setting clause. Never insert openers like \"Before we get into...\", \"If you're wondering...\", \"Let's get practical\", \"Even good things have guardrails\", \"Bringing it together\", \"Starting with...\", \"Looking at...\". When you deepen a section, add the new material AFTER the opening answer, never before it.\n\n10. WHERE TRANSITIONS BELONG. Connective phrasing goes in the SECOND sentence or later, or at the END of the preceding section. Use it sparingly.\n\n11. CITATION LIMITS: maximum 2 links per domain, minimum 2 distinct domains. If one domain is linked three or more times, keep the 2 most load-bearing links and unlink the rest, leaving the sentence text intact. Convert any bare URL into a Markdown link with descriptive anchor text.\n\n12. ANCHOR TEXT must describe the source or finding. Rewrite any anchor reading \"study link\", \"click here\", \"source\", \"read more\", \"here\", or a bare URL into something descriptive, without changing the URL.\n\n13. VARY RHYTHM AND VOICE. Mix short punchy sentences with longer explanatory ones. Use conversational phrasing or first-person-plural expert framing (\"we've found\", \"in commercial cold storage\") once or twice for warmth — sparingly.\n\n14. AVOID LABEL-COLON PATTERNS.\n\n15. KEEP the \"Can you X? Yes/No —\" pattern to at most 2 places.\n\n16. US ENGLISH SPELLING consistently: fiber, flavor, color, favor.\n\n17. Keep the remaining H2/H3 headings and their order. Keep the FAQ format: each H3 a question ending in a question mark, each answer 1–3 sentences with the first sentence answering directly, no \"Q:\"/\"A:\" prefixes. Keep the closing TMICORP credibility note as 2–3 flowing sentences, remove any vague filler claim that the company \"emphasizes\" or \"focuses on\" something, and add no further company mentions.\n\nOutput the fully rewritten article in Markdown (## for H2, ### for H3). No preamble, no meta-commentary — output only the rewritten article."
+        }
+      },
+      "id": "31277042-31ca-4c29-baab-e4df2bcb3aff",
+      "name": "AI Agent Rewrite",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        4256,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Marketing plan",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1827161699,
+          "mode": "list",
+          "cachedResultName": "KEY WORD SEO",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1827161699"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "Written",
+            "Title": "={{ $('Code in JavaScript8').item.json.title_seo }}",
+            "Meta": "=slug:{{ $('Code in JavaScript8').item.json.slug }}\nmeta_description:{{ $('Code in JavaScript8').item.json.meta_description }}\ntags :{{ $('Code in JavaScript8').item.json.tags }}\nexcerpt :{{ $('Code in JavaScript8').item.json.excerpt }}",
+            "row_number": "={{ $('Get row(s) in sheet1').item.json.row_number }}",
+            "link": "=https://drive.google.com/file/d/{{ $json.id }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "KW_ID",
+              "displayName": "KW_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Pillar Topic",
+              "displayName": "Pillar Topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Seed",
+              "displayName": "Seed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Geolocation",
+              "displayName": "Geolocation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Tavily",
+              "displayName": "Tavily",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Search Intent",
+              "displayName": "Search Intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Buyer",
+              "displayName": "Buyer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "primary",
+              "displayName": "primary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "secondary",
+              "displayName": "secondary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Meta",
+              "displayName": "Meta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "link",
+              "displayName": "link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5744,
+        128
+      ],
+      "id": "61efc7ff-af3d-47d4-b5e3-c79d0354b53c",
+      "name": "Update row in sheet"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Chuyển Markdown -> HTML deterministic (thay AI Agent HTML)\n// Hỗ trợ: ##/###, **bold**, *italic*, [link](url), bảng, ul/ol, blockquote, đoạn văn\n\nconst md = String($input.first().json.output || '');\n\nfunction inline(s) {\n  return s\n    .replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>')\n    .replace(/(^|[^*])\\*([^*]+)\\*/g, '$1<em>$2</em>')\n    .replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g, '<a href=\"$2\" target=\"_blank\" rel=\"noopener\">$1</a>');\n}\n\nconst lines = md.replace(/\\r/g, '').split('\\n');\nconst out = [];\nlet i = 0;\n\nwhile (i < lines.length) {\n  const line = lines[i];\n  if (!line.trim()) { i++; continue; }\n\n  if (/^### /.test(line)) { out.push(`<h3>${inline(line.slice(4).trim())}</h3>`); i++; continue; }\n  if (/^## /.test(line))  { out.push(`<h2>${inline(line.slice(3).trim())}</h2>`); i++; continue; }\n\n  if (/^> /.test(line)) {\n    const buf = [];\n    while (i < lines.length && /^> ?/.test(lines[i]) && lines[i].trim()) { buf.push(lines[i].replace(/^> ?/, '')); i++; }\n    out.push(`<blockquote><p>${inline(buf.join(' '))}</p></blockquote>`);\n    continue;\n  }\n\n  // Bảng markdown: | a | b | + dòng phân cách |---|---|\n  if (/^\\|.*\\|\\s*$/.test(line) && i + 1 < lines.length && /^\\|[\\s:|-]+\\|\\s*$/.test(lines[i + 1])) {\n    const parseRow = l => l.trim().replace(/^\\|/, '').replace(/\\|$/, '').split('|').map(c => c.trim());\n    const header = parseRow(line);\n    i += 2;\n    const rows = [];\n    while (i < lines.length && /^\\|.*\\|\\s*$/.test(lines[i])) { rows.push(parseRow(lines[i])); i++; }\n    let t = '<table><thead><tr>' + header.map(h => `<th>${inline(h)}</th>`).join('') + '</tr></thead><tbody>';\n    t += rows.map(r => '<tr>' + r.map(c => `<td>${inline(c)}</td>`).join('') + '</tr>').join('');\n    t += '</tbody></table>';\n    out.push(t);\n    continue;\n  }\n\n  if (/^\\d+\\. /.test(line)) {\n    const buf = [];\n    while (i < lines.length && /^\\d+\\. /.test(lines[i])) { buf.push(lines[i].replace(/^\\d+\\. /, '')); i++; }\n    out.push('<ol>' + buf.map(b => `<li>${inline(b)}</li>`).join('') + '</ol>');\n    continue;\n  }\n\n  if (/^[-*] /.test(line)) {\n    const buf = [];\n    while (i < lines.length && /^[-*] /.test(lines[i])) { buf.push(lines[i].replace(/^[-*] /, '')); i++; }\n    out.push('<ul>' + buf.map(b => `<li>${inline(b)}</li>`).join('') + '</ul>');\n    continue;\n  }\n\n  // Đoạn văn: gom tới dòng trống hoặc block mới\n  const buf = [line];\n  i++;\n  while (i < lines.length && lines[i].trim() && !/^(## |### |\\||[-*] |\\d+\\. |> )/.test(lines[i])) {\n    buf.push(lines[i]); i++;\n  }\n  out.push(`<p>${inline(buf.join(' ').trim())}</p>`);\n}\n\nreturn [{ json: { output: out.join('\\n') } }];"
+      },
+      "id": "75e9d832-c674-4a61-ba9a-9b3700a3b87e",
+      "name": "Markdown to HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4784,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-5",
+        "options": {}
+      },
+      "id": "b79d2663-98b3-4fe5-9c4c-08f5d665add0",
+      "name": "OpenRouter Chat Model Writer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        4032,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Chay MOT LAN CHO MOI ITEM.\n// Row context lay tu Normalize Intent theo paired item -> khong con bug .first()\n// Payload USDA lay tu $json (co the rong neu di nhanh No USDA)\n\nconst WANT = [\n  ['Energy', 'Calories (kcal)'], ['Water', 'Water'], ['Protein', 'Protein'],\n  ['Carbohydrate, by difference', 'Total carbohydrate'],\n  ['Sugars, total including NLEA', 'Total sugars'],\n  ['Fiber, total dietary', 'Dietary fiber'],\n  ['Total lipid (fat)', 'Total fat'],\n  ['Potassium, K', 'Potassium'], ['Calcium, Ca', 'Calcium'],\n  ['Iron, Fe', 'Iron'], ['Magnesium, Mg', 'Magnesium'],\n  ['Phosphorus, P', 'Phosphorus'], ['Sodium, Na', 'Sodium'],\n  ['Zinc, Zn', 'Zinc'], ['Copper, Cu', 'Copper'], ['Manganese, Mn', 'Manganese'],\n  ['Vitamin C, total ascorbic acid', 'Vitamin C'],\n  ['Thiamin', 'Thiamin (B1)'], ['Riboflavin', 'Riboflavin (B2)'], ['Niacin', 'Niacin (B3)'],\n];\n\nconst row = $('Normalize Intent').item.json;\nconst j = $json;\n\nlet usda_table = '', usda_source = '', usda_link = '', usda_food = '';\nconst nutrients = j.foodNutrients || [];\n\nif (nutrients.length) {\n  const byName = new Map();\n\n  for (const n of nutrients) {\n    // /food/{id} tra n.nutrient.name + n.amount\n    // /foods/search tra n.nutrientName + n.value\n    const name = n.nutrient?.name ?? n.nutrientName;\n    const unit = String(n.nutrient?.unitName ?? n.unitName ?? '').toLowerCase();\n    const val  = n.amount ?? n.value;\n\n    if (!name || val === undefined || val === null) continue;\n\n    // FIX: USDA tra ca kcal va kJ cho \"Energy\" - chi nhan kcal\n    if (name === 'Energy' && unit !== 'kcal') continue;\n\n    if (byName.has(name)) continue;\n    byName.set(name, `${val} ${unit}`);\n  }\n\n  const lines = WANT.filter(([k]) => byName.has(k))\n                    .map(([k, label]) => `| ${label} | ${byName.get(k)} |`);\n\n  if (lines.length >= 5) {\n    usda_food   = j.description || '';\n    usda_source = `https://fdc.nal.usda.gov/food-details/${j.fdcId}/nutrients`;\n    usda_link   = `[USDA FoodData Central](${usda_source})`;\n    usda_table  = [\n      `Nutrients per 100 g of ${usda_food} (USDA FoodData Central, FDC ID ${j.fdcId}):`,\n      '',\n      '| Nutrient | Per 100 g |',\n      '|---|---|',\n      ...lines,\n      '',\n      `Ready-to-use Markdown citation (paste exactly, never the bare URL): ${usda_link}`,\n    ].join('\\n');\n  }\n}\n\nreturn { json: { ...row, usda_table, usda_source, usda_link, usda_food } };"
+      },
+      "id": "a4ec6627-f58b-49b8-90c2-dcfc4812f989",
+      "name": "Format USDA Nutrition",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2096,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const INTENT_MAP = [\n  ['transactional', /transaction/i],\n  ['commercial',    /commercial/i],\n  ['navigational',  /navigat/i],\n  ['informational', /informat/i],\n];\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const r = item.json;\n  const raw = String(r['Search Intent'] ?? r.search_intent ?? r.intent ?? '').trim();\n\n  let intent = '';\n  for (const [name, re] of INTENT_MAP) {\n    if (re.test(raw)) { intent = name; break; }\n  }\n\n  const primary = String(r.primary ?? '').trim();\n  const seed    = String(r.Seed ?? r.seed ?? '').trim();\n\n  if (!primary && !seed) {\n    throw new Error(`Row ${r.row_number}: trong ca primary va Seed`);\n  }\n  if (!intent) {\n    throw new Error(`Row ${r.row_number}: khong doc duoc Search Intent (\"${raw}\") - phai chua Information / Navigational / Commercial / Transactional`);\n  }\n\n  out.push({ json: {\n    ...r,\n    intent,\n    intent_raw: raw,\n    primary: primary || seed,\n    seed: seed || primary,\n  }});\n}\n\nreturn out;"
+      },
+      "id": "10e348d0-6c6a-4b25-9c7b-e3986b5e0ee2",
+      "name": "Normalize Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r-inf",
+                    "leftValue": "={{ $json.intent }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "informational"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "informational"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r-com",
+                    "leftValue": "={{ $json.intent }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "commercial"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "commercial"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "skip (other intents)"
+        }
+      },
+      "id": "d46c4535-67c3-4813-b26c-11c142af57d0",
+      "name": "Route by Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        768,
+        496
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "cb32d4cd-6976-4725-a8ad-32db3b710fe3",
+      "name": "Skip - Other Intents",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        512
+      ],
+      "notes": "Navigational = truy van thuong hieu. Phuc vu bang trang chu / trang san pham, khong viet bai blog."
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Resolve USDA data for this article.\nPrimary keyword: {{ $json.primary }}\nProduct / seed: {{ $json.seed }}\nSearch intent: {{ $json.intent }}\nTitle: {{ $json.Title }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You are a USDA FoodData Central resolver for TMICORP, a Vietnamese manufacturer and exporter of processed agricultural products.\n\nArticle context:\n- Primary keyword: {{ $json.primary }}\n- Product / seed: {{ $json.seed }}\n- Search intent: {{ $json.intent }}\n- Title: {{ $json.Title }}\n\nSTEP 1 - DECIDE WHETHER NUTRITION DATA IS NEEDED AT ALL\nReturn needs_nutrition = false and stop immediately when ANY of these holds:\n- The article is about sourcing, suppliers, MOQ, pricing, certifications, HS codes, grades, packaging or logistics. B2B sourcing content does not need a nutrition table.\n- The article compares varieties, grades or origins where the deciding factors are flavor, volatile oil, coumarin, price or specification rather than macronutrients.\n- The product is a spice, extract, essential oil, oleoresin or flavoring normally used in amounts under about 1 g per serving. A per-100 g table is actively misleading for these.\n- The topic is storage, shelf life, processing or food safety.\nReturn needs_nutrition = true ONLY when the article will make nutrient, calorie, vitamin or mineral claims that a reader expects a table to back up.\n\nSTEP 2 - BUILD THE SEARCH TERM\nUSDA descriptions follow the pattern \"Commodity, form, preparation\" - for example \"Pineapple, canned, juice pack, solids and liquids\" or \"Spices, cinnamon, ground\". Translate the product into USDA's own vocabulary.\nStrip everything USDA does not record: brand names, country names, grade names, marketing words, certifications.\n  \"Saigon cinnamon\" becomes \"cinnamon, ground\"\n  \"Premium Vietnamese frozen jackfruit\" becomes \"jackfruit, raw\"\n  \"canned pineapple slices in syrup\" becomes \"pineapple, canned, heavy syrup\"\n\nSTEP 3 - SEARCH, THEN VERIFY EVERY CANDIDATE\nCall usda_search. Read EVERY returned description before choosing. Accept a candidate only if it is the commodity itself in a relevant form.\n\nREJECT, without exception:\n- Prepared or composite foods that merely CONTAIN the ingredient: \"Bread, cinnamon\", \"Cake, pineapple upside down\", \"Cereal, ...\", \"Candy, ...\", \"Yogurt, ...\", \"Baby food, ...\", \"Soup, ...\", \"Sauce, ...\", \"Pie, ...\", \"Muffin, ...\". These are a different food. Rejecting them is the single most important thing you do.\n- A different commodity that merely shares a word with the search term.\n- A different species.\n\nIf nothing acceptable comes back, call usda_search AGAIN with different phrasing: the bare singular commodity name, the botanical name, or a broader term. Maximum 3 search attempts total.\n\nIf after 3 attempts no acceptable entry exists, return fdc_id = null and needs_nutrition = false, and explain why in reason. THIS IS A GOOD OUTCOME. No table is far better than a table for the wrong food.\n\nSTEP 4 - CONFIDENCE\n- high: the exact commodity in the exact form the article discusses.\n- medium: right commodity, but the form differs or is unspecified.\n- low: only a loose match. Treat as unusable.\nNever return confidence \"low\" together with a non-null fdc_id.\n\nHARD RULES\n- NEVER output nutrient values, calorie counts, weights or amounts of any kind. You return an ID only. A later step fetches the real numbers from the API. Any number you write would be discarded and risks corrupting the article.\n- Copy fdc_id exactly as the API returned it. Do not reformat it.\n- Populate the rejected array with the descriptions you turned down, so a human can audit your choice.\n- Return JSON only, no text outside the JSON."
+        }
+      },
+      "id": "8b185df5-49c9-46a7-806a-3b5e0a8cc82a",
+      "name": "USDA Resolver",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        976,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-5-mini",
+        "options": {}
+      },
+      "id": "56ddc0f4-50ce-47e0-958c-bc5452cdff8f",
+      "name": "OpenRouter Resolver Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        688,
+        176
+      ],
+      "notes": "CAN CHON CREDENTIAL OpenRouter trong UI truoc khi chay."
+    },
+    {
+      "parameters": {
+        "toolDescription": "Search USDA FoodData Central for candidate food entries. Returns a list of candidates, each with an fdcId and a description. Use it to find the entry that matches the article's product, then verify the descriptions before choosing one.",
+        "url": "https://api.nal.usda.gov/fdc/v1/foods/search",
+        "sendQuery": true,
+        "parametersQuery": {
+          "values": [
+            {
+              "name": "query"
+            },
+            {
+              "name": "dataType",
+              "valueProvider": "fieldValue",
+              "value": "Foundation,SR Legacy"
+            },
+            {
+              "name": "pageSize",
+              "valueProvider": "fieldValue",
+              "value": "25"
+            },
+            {
+              "name": "api_key",
+              "valueProvider": "fieldValue",
+              "value": "YOUR_USDA_API_KEY"
+            }
+          ]
+        }
+      },
+      "id": "2c528fb6-18dc-40dd-99b4-9b6f19a2b001",
+      "name": "usda_search",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1056,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"needs_nutrition\": true,\n  \"fdc_id\": 169124,\n  \"matched_description\": \"Pineapple, canned, juice pack, solids and liquids\",\n  \"rejected\": [\"Cake, pineapple upside down\", \"Baby food, pineapple\"],\n  \"search_terms_tried\": [\"pineapple, canned\", \"pineapple canned juice pack\"],\n  \"form_match\": \"exact\",\n  \"confidence\": \"high\",\n  \"reason\": \"Commodity and form both match the article subject; composite foods containing pineapple were rejected.\"\n}"
+      },
+      "id": "e11608d5-4e12-454c-917b-1ef54e68e96c",
+      "name": "USDA Resolver Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1248,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "n1",
+              "leftValue": "={{ $json.output.needs_nutrition }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            },
+            {
+              "id": "n2",
+              "leftValue": "={{ $json.output.fdc_id }}",
+              "operator": {
+                "operation": "exists",
+                "singleValue": true,
+                "type": "number"
+              },
+              "rightValue": ""
+            },
+            {
+              "id": "n3",
+              "leftValue": "={{ $json.output.confidence }}",
+              "operator": {
+                "operation": "notEquals",
+                "type": "string"
+              },
+              "rightValue": "low"
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "bbfb336d-c02f-4cc9-a1ce-49dfc919deda",
+      "name": "Need USDA",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1520,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.nal.usda.gov/fdc/v1/food/{{ $json.output.fdc_id }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "api_key",
+              "value": "YOUR_USDA_API_KEY"
+            },
+            {
+              "name": "format",
+              "value": "abridged"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "230ee83c-337e-4a08-9631-ce1621b37c06",
+      "name": "USDA Fetch by ID",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1808,
+        -144
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "Lay so lieu THAT theo fdc_id. Agent chi tra ID, khong bao gio tra so."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "usda_table",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "d1a3a420-05d1-4580-9db4-630cef4d857c",
+      "name": "No USDA",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1808,
+        368
+      ],
+      "notes": "Khong co du lieu USDA phu hop -> bai viet khong duoc dung bang dinh duong."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "pc1",
+              "name": "usda_table",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "pc2",
+              "name": "flow",
+              "type": "string",
+              "value": "commercial-b2c"
+            },
+            {
+              "id": "pc3",
+              "name": "target_market",
+              "type": "string",
+              "value": "={{ $json.Geolocation }}"
+            },
+            {
+              "id": "pc4",
+              "name": "search_region",
+              "type": "string",
+              "value": "={{ $json.Tavily }}"
+            },
+            {
+              "id": "pc5",
+              "name": "audience",
+              "type": "string",
+              "value": "={{ $json.Buyer || 'B2C' }}"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "cec64edf-5e37-44ee-94ae-3199fa88c8a1",
+      "name": "Prep Commercial",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        768
+      ],
+      "notes": "Nhanh Commercial KHONG dung USDA. Bai so sanh / sourcing khong can bang dinh duong per-100g."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gop N ket qua Tavily (moi query 1 item), nhom lai theo purpose.\n// Ghep nguoc ve query bang INDEX: Tavily tra ra dung thu tu input.\n\nconst PRIMARY = [\n  /\\.gov(\\/|$|:)/, /\\.gov\\./, /\\.edu(\\/|$|:)/, /\\.nic\\.in/, /\\.ac\\.in/,\n  /fda\\.gov/, /usda\\.gov/, /nih\\.gov/, /ncbi\\.nlm\\.nih\\.gov/, /pubmed/,\n  /who\\.int/, /efsa\\.europa\\.eu/, /fao\\.org/, /codexalimentarius/,\n  /bfr\\.bund\\.de/, /ec\\.europa\\.eu/, /eur-lex\\.europa\\.eu/,\n  // co quan quan ly An Do - quan trong khi target market la in\n  /fssai\\.gov\\.in/, /indianspices\\.com/, /spicesboard/, /icar\\.org\\.in/,\n  /sciencedirect\\.com/, /nature\\.com/, /mdpi\\.com/, /frontiersin\\.org/,\n  /cochrane/, /bmj\\.com/, /thelancet\\.com/,\n];\n\n// To chuc y te / y khoa uy tin: duoc LINK cho ngu canh suc khoe,\n// nhung khong dung lam nguon so lieu neu co nguon PRIMARY\nconst HEALTH = [\n  /mayoclinic\\.org/, /clevelandclinic\\.org/, /hopkinsmedicine\\.org/,\n  /health\\.harvard\\.edu/, /nhs\\.uk/, /heart\\.org/, /diabetes\\.org/,\n];\n\nfunction tier(url) {\n  const u = String(url || '').toLowerCase();\n  if (PRIMARY.some(re => re.test(u))) return 'PRIMARY';\n  if (HEALTH.some(re => re.test(u)))  return 'HEALTH';\n  return 'competitor';\n}\n\nconst plans   = $('Expand Queries C').all().map(i => i.json);\nconst results = $input.all();\nconst meta    = plans[0] || {};\n\nif (results.length === 0) throw new Error('Search Web C khong tra ve item nao.');\n\nconst PURPOSES = ['serp', 'option', 'attribute', 'safety', 'price', 'local'];\nconst buckets = {};\nPURPOSES.forEach(p => buckets[p] = []);\nconst queriesRun = [];\n\nresults.forEach((item, idx) => {\n  const p = plans[idx] || {};\n  const purpose = buckets[p.purpose] ? p.purpose : 'attribute';\n  queriesRun.push(`[${purpose}] ${p.query || '(?)'}`);\n\n  for (const r of (item.json?.results || [])) {\n    buckets[purpose].push({\n      title: r.title || '', url: String(r.url || ''),\n      content: r.content || '', raw: r.raw_content || '', tier: tier(r.url),\n    });\n  }\n});\n\nif (buckets.serp.length === 0) {\n  throw new Error('Query serp khong tra ve ket qua nao - kiem tra cot primary va Tavily trong sheet.');\n}\n\n// dedupe URL xuyen bucket\nconst seen = new Set();\nfor (const k of PURPOSES) {\n  buckets[k] = buckets[k].filter(r => {\n    const u = r.url.toLowerCase();\n    if (!u || seen.has(u)) return false;\n    seen.add(u); return true;\n  });\n}\n\nconst fmt = arr => arr.length\n  ? arr.map((r, i) => `${i + 1}. [${r.tier}] ${r.title}\\nURL: ${r.url}\\n${r.content}\\n`).join('\\n---\\n')\n  : 'No results for this angle. Do NOT invent a figure to fill the gap.';\n\nconst rank = { PRIMARY: 0, HEALTH: 1, competitor: 2 };\nconst rawFrom = (arr, n) => arr.filter(r => r.raw)\n  .sort((a, b) => rank[a.tier] - rank[b.tier]).slice(0, n)\n  .map((r, i) => `SOURCE ${i + 1} [${r.tier}]: ${r.title}\\nURL: ${r.url}\\n${String(r.raw).slice(0, 4000)}`)\n  .join('\\n\\n=====\\n\\n');\n\nconst optionData = [...buckets.option, ...buckets.attribute, ...buckets.local];\nconst all = PURPOSES.flatMap(p => buckets[p]);\n\nreturn [{\n  json: {\n    ...meta,\n    queries_run: queriesRun.join('\\n'),\n    serp_total:   buckets.serp.length,\n    option_total: buckets.option.length,\n    safety_total: buckets.safety.length,\n    price_total:  buckets.price.length,\n    local_total:  buckets.local.length,\n    data_total:   optionData.length + buckets.safety.length + buckets.price.length,\n    linkable_count: all.filter(r => r.tier !== 'competitor').length,\n    serp_list:   fmt(buckets.serp),\n    option_list: fmt(optionData),\n    safety_list: fmt(buckets.safety),\n    price_list:  fmt(buckets.price),\n    local_list:  fmt(buckets.local),\n    option_excerpts: rawFrom(optionData, 3) || 'No raw option excerpts available.',\n    safety_excerpts: rawFrom([...buckets.safety, ...buckets.price], 2) || 'No raw safety or price excerpts available.',\n    serp_excerpts:   rawFrom(buckets.serp, 2) || 'No raw competitor excerpts available.',\n    sources_list: all.map((r, i) => `${i + 1}. [${r.tier}] ${r.title} - ${r.url}`).join('\\n'),\n  }\n}];"
+      },
+      "id": "3ae258c7-d7e9-4b16-ad01-20755d235a2b",
+      "name": "Code Sources C",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-5-mini",
+        "options": {}
+      },
+      "id": "0bb80728-5929-4e11-9a22-7aaf4104540d",
+      "name": "Model C Cheap",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        2624,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Build the consumer buying-guide outline for: {{ $json.primary }}\nSecondary keywords to cover: {{ $json.secondary }}\nOptions: {{ JSON.stringify($json.compared_options) }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You are a senior consumer-SEO content strategist for TMICORP, publishing on tmicorpgroup.com.\n\nWHO THE READER IS: an ordinary shopper or home cook, ANYWHERE IN THE WORLD, deciding which version of this product to buy. NOT an importer. This article must contain no HS codes, no MOQ, no Incoterms, no FOB pricing, no container specifications and no ISO test-method numbers.\n\nTHE ARTICLE IS NOT TARGETED AT ANY COUNTRY. A market code was used to gather the keywords, and that is all it was for. So the outline must NOT contain: a section about prices in one currency, a section about where to buy in one country, one national agency as the article's regulatory anchor, or named supermarkets and e-commerce sites. Every section must read equally well to a reader in any country. Where price matters, plan it as relative levels between the options. Where a limit matters, plan it around the internationally recognised assessment and the body behind it.\nA LOCAL PRODUCT NAME IS DIFFERENT and is allowed - if a keyword asks about a name like dalchini, that is a fact about what the product is called and which option the name usually indicates. Cover it as naming information, never as \"advice for shoppers in country X\".\n\nTHE KEYWORDS ARE THE SPECIFICATION. They were chosen deliberately. You do not get to replace them with a topic you find more substantial.\n- Primary keyword: {{ $json.primary }}\n- Secondary keywords: {{ $json.secondary }}\n- Provided title (may be empty): {{ $json.Title }}\n- Product form: {{ $json.product_form }}\n- Options to compare: {{ JSON.stringify($json.compared_options) }}\n\nKEYWORD TOPICS THE PLANNER MAPPED - your mandatory coverage list:\n{{ JSON.stringify($json.keyword_topics) }}\n\nKEYWORDS THE PLANNER DROPPED, with reasons - reinstate any you disagree with:\n{{ JSON.stringify($json.dropped_keywords) }}\n\nPROPOSED TABLE COLUMNS (a starting point, not final):\n{{ JSON.stringify($json.table_columns) }}\n\nWHAT TO CHECK WHEN BUYING:\n{{ JSON.stringify($json.buying_checklist) }}\n\nRESEARCH EXECUTED:\n{{ $json.queries_run }}\n\nCompetitor articles ({{ $json.serp_total }}):\n{{ $json.serp_list }}\n\nPER-OPTION AND ATTRIBUTE RESEARCH ({{ $json.option_total }}):\n{{ $json.option_list }}\n\nSAFETY RESEARCH ({{ $json.safety_total }}):\n{{ $json.safety_list }}\n\nRELATIVE PRICE RESEARCH ({{ $json.price_total }}):\n{{ $json.price_list }}\n\nNAMING RESEARCH ({{ $json.local_total }}):\n{{ $json.local_list }}\n\nRaw excerpts:\n{{ $json.option_excerpts }}\n\nRULE 1 - COVER EVERY KEYWORD TOPIC. Each entry in keyword_topics must be answered somewhere. Record in keyword_coverage which section covers each. If you genuinely cannot serve a topic, add it to dropped_topics with a reason - the bar is high. Never silently ignore one.\nA topic does NOT automatically get its own H2. Related topics often belong in one section, and a count topic like \"2 types versus 4 types\" is usually answered in the opening paragraph. Merge freely; just leave nothing unanswered.\n\nRULE 2 - THE COMPARISON TABLE IS THE SPINE. Exactly one section's notes must instruct the writer to render a Markdown comparison table in the first third, one row per option.\nCUT COLUMNS HARD: drop any column you cannot fill with a genuinely DIFFERENT value for at least 3 rows. A column reading the same on every row carries zero comparative information. Never a laboratory method limit. Never an absolute price in one currency - use a relative price level column instead, which is meaningful to every reader. Five populated columns beat seven half-empty ones. Always keep an identity column, a relative price column and a use column, plus an appearance column whenever the keywords ask for visual identification. Return survivors in comparison_table.columns and removals with reasons in comparison_table.dropped.\n\nRULE 3 - NO HEDGING INSIDE TABLE CELLS. A cell states the value, nothing else. Parenthetical disclaimers like \"levels may vary\", \"ranges differ\", \"depending on testing\" must NOT appear in cells - repeated down a column they make the whole table look unreliable. If a figure genuinely varies by batch or origin, the notes must tell the writer to say so ONCE in the prose below the table, not in every cell.\n\nRULE 4 - VISUAL IDENTIFICATION IS A SECTION, NOT A DECORATION. If any keyword mentions images, pictures or photos, or if the reader needs to tell options apart by sight, include a section on how to recognise each option - colour, layer structure, thickness, texture, smell. Its notes must tell the writer to insert one image slot per option using Markdown image syntax with descriptive alt text, AND to describe the visual difference in words, because the words are what ranks.\n\nRULE 5 - BENEFITS ARE ALLOWED WHEN THE KEYWORDS ASK FOR THEM. Frame them as part of the buying decision, honestly, including where evidence is thin or preclinical. Do not refuse the topic and do not inflate it. No dosage advice, no treatment claims.\n\nRULE 6 - QUANTITATIVE, BUT TRANSLATED. Adjectives like \"stronger\" help nobody choose. Every comparison section's notes must name the measurable the writer has to state AND require it be translated into something the reader can act on - what a figure means per teaspoon or per serving, whether a limit is easy to exceed in normal cooking, whether a price gap is worth it. A bare laboratory number with no translation is as useless as an adjective.\n\nRULE 7 - NAME THE PARAMETER, NOT JUST THE NUMBER. Wherever the notes ask for a figure, they must name exactly which parameter it is - a compound concentration, an oil content, a moisture level - because these are all percentages and are easily confused. Never let a section ask for \"the percentage\".\n\nRULE 8 - RESOLVE CONTRADICTORY FIGURES IN THE NOTES. If the research gives the same parameter as both a minimum and a maximum, in two different units, or if two sources use the same percentage for different parameters, the notes must tell the writer which single figure to lead with and what the other actually measures.\n\nRULE 9 - A SHOP-FLOOR SECTION IS MANDATORY, built from buying_checklist: what to look for on the label and package, how to spot the wrong option, whole versus ground, packaging condition. Everything checkable in any shop in any country without a laboratory, and without naming a country's certification mark.\n\nRULE 10 - END WITH A PRACTICAL NEXT STEP, BEFORE THE FAQ: what to look for and pick up next time, and how to store it. Guidance, never advertising.\n\nRULE 11 - HEADINGS ARE READER-FACING TEXT ONLY. Never a production note, format directive, keyword annotation or depth label in a heading. All writer guidance goes in notes. Re-read every heading and delete any parenthetical that is not natural reader-facing language. No heading may name a country.\n\nRULE 12 - NO SECTION ABOUT THE ARTICLE ITSELF. Never have the writer explain which sources were used or how the table was built.\n\nRULE 13 - DO NOT CREATE ONE SECTION PER SECONDARY KEYWORD. Merge synonyms. Never pad to hit a count.\n\nRULE 14 - DEPTH LABELS. Mark every section \"depth: primary\" (150-250 words) or \"depth: minor\" (70-110 words). Use both.\n\nTITLE - If the provided title is non-empty, return it EXACTLY. If empty, write one under 60 characters with the primary keyword at or near the front. Never a country name in the title.\n\nOPENING SECTION - The first H2 is the direct answer. Its notes must require 3 to 4 SEPARATE short sentences, each naming one option and the single thing that decides it, and must forbid one long semicolon-chained sentence. Where a keyword asks how many types there are, answer it here.\n\nFAQ - End with an H2 \"Frequently asked questions\" holding 4-6 H3 questions, each a complete question ending in a question mark that a shopper would type. No duplicate of a body section.\n\nENTITIES - Every name, variety, alternate name and measurable the research consistently mentions.\n\nOUTPUT - Return JSON only, no text outside the JSON."
+        }
+      },
+      "id": "bda9b40f-409c-4eff-b067-e1133e15bac3",
+      "name": "Outline C",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2608,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"title\": \"Cinnamon Types: Compare Ceylon, Cassia, Saigon\",\n  \"comparison_table\": {\n    \"columns\": [\"Type\", \"How it looks\", \"Flavour\", \"Coumarin level\", \"Relative price\", \"Best for\"],\n    \"dropped\": [\n      { \"column\": \"Retail price per 100 g\", \"reason\": \"An absolute price in one currency is meaningless to most readers - replaced with a relative price level column\" },\n      { \"column\": \"Moisture content\", \"reason\": \"A laboratory figure a shopper cannot check, and identical across the options\" }\n    ],\n    \"rows_expected\": 4\n  },\n  \"keyword_coverage\": [\n    { \"topic\": \"How to tell the types apart by sight\", \"covered_in\": \"How to identify each type\" },\n    { \"topic\": \"Health benefits by type\", \"covered_in\": \"Which type gives the most benefit\" },\n    { \"topic\": \"Alternate and local names\", \"covered_in\": \"What dalchini and other names refer to\" },\n    { \"topic\": \"Sticks versus powder\", \"covered_in\": \"Sticks or powder: which to buy\" },\n    { \"topic\": \"How many types there are\", \"covered_in\": \"Which type should you buy - opening answer\" }\n  ],\n  \"dropped_topics\": [],\n  \"outline\": [\n    { \"heading\": \"Which cinnamon type should you buy?\", \"level\": \"H2\", \"notes\": \"depth: primary. 3-4 SEPARATE short sentences, one per type, each with the one thing that decides it. Answer the 2-versus-4-types question here. NO semicolon chain.\" },\n    { \"heading\": \"Cinnamon types compared\", \"level\": \"H2\", \"notes\": \"depth: primary. RENDER THE MARKDOWN TABLE with exactly comparison_table.columns. Coumarin column states COUMARIN concentration only - never an oil content figure. Price column is a relative level, no currency. NO hedging text inside any cell; state batch variation once in the prose below the table.\" },\n    { \"heading\": \"How to identify each type\", \"level\": \"H2\", \"notes\": \"depth: primary. Colour, layer count, thickness, snap and aroma in words, then one image slot per type with descriptive alt text.\" },\n    { \"heading\": \"What dalchini and other names refer to\", \"level\": \"H2\", \"notes\": \"depth: minor. Which option each name usually indicates and roughly where the name is used. Naming information, not shopping advice for one country.\" },\n    { \"heading\": \"What to check on the label\", \"level\": \"H2\", \"notes\": \"depth: primary. From buying_checklist. Shop-checkable anywhere, no country-specific certification mark.\" }\n  ],\n  \"entities\": [\"Cinnamomum verum\", \"Cinnamomum zeylanicum\", \"cassia\", \"coumarin\", \"dalchini\", \"quill\", \"volatile oil\"]\n}"
+      },
+      "id": "32128e6d-b8af-4eee-b6dc-ee2a5dd73a47",
+      "name": "Outline C Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2752,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Extract shopper-facing decision figures for: {{ $json.primary }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You are a senior fact-checker for TMICORP's consumer buying guides on tmicorpgroup.com.\n\nVerified TMICORP facts - use ONLY these, invent nothing beyond them:\n- Toan My International Trading Investment JSC. (TMICORP), Hanoi, Vietnam, business registration 0108679588 issued 2 April 2019\n- Certifications: ISO 22000, HACCP, FDA registered, BRC FOOD, HALAL\n- Products: canned fruit and vegetables; dried fruit, vegetables and nuts; frozen fruit and vegetables; Japonica rice; pickles; sauces; spices (cinnamon, star anise, black cardamom, pepper, chilli, ginger); grape leaves in brine; fruit vinegar; cakes\n- Brands: TMI Foods, Ecovita, Sunrich, SunVitD\n- Published product self-declarations exist for canned pineapple, canned lychees and pickled cucumber\n- OEM/ODM manufacturing with low MOQ\n\nTHE READER IS A SHOPPER ANYWHERE IN THE WORLD. Figures must be usable by a consumer and must not depend on one country's rules or currency.\n\nPrimary keyword: {{ $json.primary }}\nProduct form: {{ $json.product_form }}\nOptions compared: {{ JSON.stringify($json.compared_options) }}\n\nQueries run:\n{{ $json.queries_run }}\n\nCompetitor articles ({{ $json.serp_total }}):\n{{ $json.serp_list }}\n\nPER-OPTION AND ATTRIBUTE RESEARCH ({{ $json.option_total }}):\n{{ $json.option_list }}\n\nSAFETY RESEARCH ({{ $json.safety_total }}):\n{{ $json.safety_list }}\n\nRELATIVE PRICE RESEARCH ({{ $json.price_total }}):\n{{ $json.price_list }}\n\nNAMING RESEARCH ({{ $json.local_total }}):\n{{ $json.local_list }}\n\nRaw excerpts:\n{{ $json.option_excerpts }}\n{{ $json.safety_excerpts }}\n\nSTEP 1 - EXTRACT THE DECISION FIGURES, AND DO NOT MISLABEL THEM\nPull out every quantitative figure a SHOPPER would use to choose between options.\n\nTHE MOST DANGEROUS ERROR YOU CAN MAKE IS ATTACHING A NUMBER TO THE WRONG PARAMETER. Foods carry several different percentages that look interchangeable and are not - essential or volatile oil content, moisture, ash, a specific compound's concentration, total soluble solids. Taking a volatile-oil percentage and recording it as a compound concentration, or a moisture figure and recording it as a purity figure, produces confident false information that then gets multiplied into a serving-size calculation and published as a safety claim. This has already happened once in this workflow.\n\nSo for every figure you record, you MUST fill source_phrase with the exact wording from the source that states it - the parameter name and the value as the source writes them. If you cannot quote the source's own words naming that parameter, DO NOT RECORD THE FIGURE. Guessing which parameter a bare percentage refers to is forbidden.\n\nThen sanity-check each figure before recording it: is this value physically plausible for this parameter in this food? If a compound concentration would imply a serving exceeds a safe daily intake many times over, you have almost certainly picked up a different parameter - drop it and say so in reasoning rather than recording it.\n\nFor each figure record: what it measures (use the parameter name exactly as the source names it), the value or range, the unit, WHICH OPTION it belongs to using the exact name from compared_options or \"all\" for category-wide, source domain, source_phrase, confidence, and consumer_meaning.\n\nconsumer_meaning must translate the figure into something a shopper can act on - what it means per teaspoon or per serving, whether a limit is easy or hard to reach in normal use, whether a price gap is worth paying. Do not put a country's currency in it.\n\nConfidence: \"documented\" for a government, standards body or peer-reviewed source; \"health org\" for a reputable medical organisation; \"trade claim\" for a supplier or marketplace; \"single source\" when only one place mentions it.\n\nA figure tagged option \"all\" is category-wide and cannot go in a comparison table - flag it so the writer knows.\n\nNever supply a figure from your own knowledge. An empty list is honest.\n\nSTEP 2 - CONFLICTS. Four kinds, all count:\n(a) two sources giving different values for the same thing\n(b) DIRECTION CONFLICT - the same parameter as both a minimum and a maximum. A conflict even when the numbers match. Say which direction to use and explain the other as a definition rather than a threshold\n(c) BASIS OR UNIT CONFLICT - the same parameter in two units or bases, for example percent versus mg/kg, or per-100 g versus per-serving. Say which to use and give the conversion, or state plainly they are not comparable\n(d) PARAMETER CONFUSION - two sources using the same percentage for what are clearly different parameters. Flag it and say which parameter the number actually belongs to\nFor each: what it measures, each source domain with its value, and recommended_approach naming the single value and direction to lead with.\n\nSTEP 3 - PRICE RELATIVITY AND NAMING\nIn price_relativity, describe how the options compare in price WITHOUT any currency: which is the premium option, which is the budget one, roughly the multiple between them, and whether each is generally found in specialty outlets or general grocery. Never a figure in rupees, dollars or euros - the article is read worldwide.\nIn naming_notes, record alternate and local names for the options and which option each name usually refers to, plus roughly where each name is used. This is product-naming information, not market targeting.\nIn authorities, name the internationally recognised bodies whose limits or assessments apply to this product, and the limit itself. Prefer internationally used assessments over one country's retail regulation.\n\nSTEP 4 - WHAT COMPETITORS ARE MISSING\nName specifically what the ranking articles fail to give a shopper. Reference what they do and do not say.\n\nSTEP 5 - E-E-A-T ANGLE\nWho TMICORP is (only the certifications above), what a certified processor plausibly knows about this product - grading, processing, storage, how form affects quality - and the specific angle it adds that no competitor offers. No proprietary lab data, no capability not listed above.\n\nOUTPUT - Return JSON only, no text outside the JSON."
+        }
+      },
+      "id": "768bd544-9c75-45d0-a9c2-347a41ffbb3e",
+      "name": "Facts C",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2608,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"decision_figures\": [\n    { \"measures\": \"Coumarin content\", \"option\": \"Chinese cassia (C. cassia)\", \"value\": \"2100-4400\", \"unit\": \"mg/kg\", \"source\": \"bfr.bund.de\", \"source_phrase\": \"cassia cinnamon contained on average 2100 to 4400 mg coumarin per kg\", \"confidence\": \"documented\", \"consumer_meaning\": \"Around half a teaspoon of cassia powder a day reaches the tolerable daily coumarin intake for an average adult, so it is not the one for everyday use.\" },\n    { \"measures\": \"Volatile oil content\", \"option\": \"Saigon or Vietnamese cinnamon\", \"value\": \"3-6\", \"unit\": \"%\", \"source\": \"pmc.ncbi.nlm.nih.gov\", \"source_phrase\": \"volatile oil content of 3 to 6 percent\", \"confidence\": \"documented\", \"consumer_meaning\": \"This is why Saigon smells and tastes noticeably stronger than the others - you can use less of it for the same effect.\" }\n  ],\n  \"conflicts\": [\n    { \"fact\": \"A 4 percent figure quoted for Saigon cinnamon\", \"conflict_type\": \"parameter confusion\", \"values_found\": [{ \"source\": \"supplier page\", \"value\": \"4% (parameter not named)\" }, { \"source\": \"pmc.ncbi.nlm.nih.gov\", \"value\": \"volatile oil 3-6%\" }], \"recommended_approach\": \"The 4 percent figure is volatile oil, not coumarin. Published coumarin levels in cinnamon never approach 4 percent. Present it as volatile oil, which explains aroma strength, and never multiply it into a coumarin-per-serving calculation.\" }\n  ],\n  \"price_relativity\": {\n    \"premium\": \"Ceylon or true cinnamon, typically several times the price of ordinary cassia\",\n    \"mid\": \"Saigon commands a premium among the cassia types for its aroma\",\n    \"budget\": \"Chinese cassia and Korintje are the lowest-priced and the most widely stocked\",\n    \"where_sold\": \"Cassia types are stocked by general grocers everywhere; Ceylon is mostly specialty spice shops and online sellers\"\n  },\n  \"naming_notes\": [\n    { \"name\": \"dalchini\", \"usually_refers_to\": \"cassia-type cinnamon unless the pack states Ceylon\", \"used_where\": \"South Asia, Hindi and related languages\" },\n    { \"name\": \"Cinnamomum zeylanicum\", \"usually_refers_to\": \"the same species as Cinnamomum verum - an older synonym still printed on labels\", \"used_where\": \"labels internationally\" }\n  ],\n  \"authorities\": [\n    { \"body\": \"EFSA\", \"limit\": \"tolerable daily intake for coumarin of 0.1 mg per kg body weight per day\", \"note\": \"about 6 mg a day for a 60 kg adult; widely used internationally as the reference\" }\n  ],\n  \"competitor_gaps\": [\"None of the ranking articles explain that the local name on the pack usually indicates cassia rather than Ceylon.\"],\n  \"eeat_angle\": {\n    \"who\": \"TMICORP, an ISO 22000 and BRC FOOD certified Vietnamese spice processor and exporter\",\n    \"how\": \"Grading and processing practice for quills and ground spice, and how drying and storage change aroma\",\n    \"why_this_article\": \"Can explain why ground cinnamon loses aroma faster than whole quills, which competitors assert without explaining\"\n  }\n}"
+      },
+      "id": "abd12585-ee8c-47d3-83b3-5ef1c2465de5",
+      "name": "Facts C Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2688,
+        1200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c1837a05-9e7a-46c0-afac-33ea2632044b",
+      "name": "Merge Brief C",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3024,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gop Outline C va Facts C thanh 1 brief cho writer.\n\nconst items = $input.all();\nif (items.length < 2) {\n  throw new Error(`Merge Brief C chi nhan duoc ${items.length} item - can dung 2 (Outline C + Facts C).`);\n}\n\nconst a = items[0]?.json?.output ?? items[0]?.json ?? {};\nconst b = items[1]?.json?.output ?? items[1]?.json ?? {};\n\nconst src = $('Code Sources C').first().json;\nconst title = a.title || b.title || src.Title || '';\nif (!title) throw new Error('Khong co title - Outline C khong tra ve title va cot Title trong sheet cung trong.');\n\nconst figures = b.decision_figures || [];\nconst table   = a.comparison_table || null;\n\nreturn [{\n  json: {\n    title,\n    comparison_table: table,\n    table_columns:    table?.columns || [],\n    dropped_columns:  table?.dropped || [],\n    compared_options: src.compared_options || [],\n    product_form:     src.product_form || '',\n    keyword_topics:   src.keyword_topics || [],\n    keyword_coverage: a.keyword_coverage || [],\n    dropped_topics:   a.dropped_topics || [],\n    buying_checklist: src.buying_checklist || [],\n    outline:          a.outline  || [],\n    entities:         a.entities || [],\n    decision_figures: figures,\n    figure_count:     figures.length,\n    conflicts:        b.conflicts || [],\n    price_relativity: b.price_relativity || {},\n    naming_notes:     b.naming_notes || [],\n    authorities:      b.authorities || [],\n    competitor_gaps:  b.competitor_gaps || [],\n    eeat_angle:       b.eeat_angle || {},\n    primary:    src.primary   || '',\n    secondary:  src.secondary || '',\n    row_number: src.row_number,\n  }\n}];"
+      },
+      "id": "a27ed71c-9e72-4cbd-b666-cecc70ff36b0",
+      "name": "Code Brief C",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3312,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-5",
+        "options": {}
+      },
+      "id": "85822682-cc18-4bb5-83b5-51f816143c7c",
+      "name": "Model C Writer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        4000,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Write the full consumer buying guide now, following this brief exactly.\n\nTitle: {{ $json.title }}\nPrimary keyword: {{ $json.primary }}\nSecondary keywords to weave in: {{ $json.secondary }}\nProduct form: {{ $json.product_form }}\n\nThis article is for readers WORLDWIDE. No single currency, no one national agency as the authority, no named retailers.\n\nOPTIONS TO COMPARE - one table row each:\n{{ JSON.stringify($json.compared_options) }}\n\nEXACT TABLE COLUMNS (already cut down - do not add any back):\n{{ JSON.stringify($json.table_columns) }}\n\nColumns deliberately REMOVED - do not reintroduce:\n{{ JSON.stringify($json.dropped_columns) }}\n\nOutline:\n{{ JSON.stringify($json.outline) }}\n\nKEYWORD COVERAGE MAP - every topic must be answered in the section named:\n{{ JSON.stringify($json.keyword_coverage) }}\n\nEntities to cover:\n{{ JSON.stringify($json.entities) }}\n\nDECISION FIGURES - the ONLY figures you may state ({{ $json.figure_count }} available). Each names its parameter and quotes the source wording in source_phrase - use each figure ONLY as that parameter. \"option\" places it in a table row; option \"all\" is category-wide and stays out of the table. Use consumer_meaning to translate every figure:\n{{ JSON.stringify($json.decision_figures) }}\n\nRELATIVE PRICE - use this instead of any currency figure:\n{{ JSON.stringify($json.price_relativity) }}\n\nINTERNATIONALLY RECOGNISED LIMITS AND THE BODIES BEHIND THEM - use these rather than one country's regulation:\n{{ JSON.stringify($json.authorities) }}\n\nALTERNATE AND LOCAL NAMES - cover as naming information, not as advice for one country:\n{{ JSON.stringify($json.naming_notes) }}\n\nCONFLICTS - resolve each to one figure, one direction, one unit. Do not narrate the disagreement:\n{{ JSON.stringify($json.conflicts) }}\n\nWHAT TO CHECK WHEN BUYING - build the shop-floor section from this:\n{{ JSON.stringify($json.buying_checklist) }}\n\nCompetitor gaps you are beating (cover what they miss; never mention competitors):\n{{ JSON.stringify($json.competitor_gaps) }}\n\nE-E-A-T angle (at most 2 mentions total):\n{{ JSON.stringify($json.eeat_angle) }}\n\nSources - link [PRIMARY] and [HEALTH] only, inline in body sentences, max 2 per domain, at least 3 links, NO reference list:\n{{ $('Code Sources C').item.json.sources_list }}\n\nPer-option and attribute excerpts:\n{{ $('Code Sources C').item.json.option_excerpts }}\n\nSafety and price excerpts:\n{{ $('Code Sources C').item.json.safety_excerpts }}\n\nCompetitor excerpts:\n{{ $('Code Sources C').item.json.serp_excerpts }}",
+        "options": {
+          "systemMessage": "You are a food writer producing a buying guide for TMICORP, published on tmicorpgroup.com.\n\nWHO YOU ARE WRITING FOR: an ordinary shopper or home cook, ANYWHERE IN THE WORLD. Write to them directly in plain confident English. Intelligent, but not a procurement professional.\n\nTHE ARTICLE IS NOT TARGETED AT ANY COUNTRY. Keywords were gathered from one market; that is all. So you must NOT write: a price in any single currency, one national food agency as the article's authority, named supermarkets or online stores, or a sentence like \"in [country], shelves usually carry...\". A reader in any country must find the whole article useful.\n- For price, give relative levels from price_relativity: which option is the premium one, which is the budget one, roughly the multiple between them, and whether each is generally found in specialty outlets or general grocery.\n- For a limit or safety threshold, use the internationally recognised assessment in authorities and name the body behind it. If national limits differ, say that they vary by country and give the international reference - never pick one country's number as the rule.\nA LOCAL PRODUCT NAME IS DIFFERENT and is welcome. If naming_notes gives one, cover it as naming information - which option that name usually indicates and roughly where the name is used. That serves every reader who meets the word. Never turn it into shopping advice for one country.\n\nRULE 1 - RENDER THE COMPARISON TABLE using exactly the columns in the brief, one row per option. Match each figure to its option using the \"option\" field in decision_figures. A figure tagged option \"all\" is category-wide and must NEVER go in the table.\n\nRULE 2 - NAME THE RIGHT PARAMETER. Foods carry several percentages that look interchangeable and are not - a compound concentration, an oil content, moisture, soluble solids. Each figure in the brief names its parameter and quotes the source's own wording in source_phrase. Use the figure ONLY under the parameter it is labelled with. Never put an oil-content figure in a compound-concentration column, and never carry a figure into a per-serving calculation unless the brief's parameter name is the one the calculation is about. If a per-serving result comes out many times a stated safe limit, stop - you have almost certainly used the wrong parameter, so leave the calculation out.\n\nRULE 3 - TRANSLATE EVERY NUMBER. Each figure carries consumer_meaning - use it. Never state a bare laboratory value and move on. \"Cassia contains 2,100 to 4,400 mg/kg of coumarin\" is unfinished; \"around half a teaspoon a day reaches the safe limit for an average adult, so it is not the one for daily use\" is finished. Where a figure has no consumer meaning you can state from the brief, drop the figure rather than printing it naked.\n\nRULE 4 - NEVER INVENT A NUMBER. Every figure must trace to decision_figures, conflicts, or the research excerpts. No value from memory, not even one you are confident about, not even to fill a table cell.\n\nRULE 5 - NO HEDGING INSIDE TABLE CELLS. A cell carries the value and nothing else. No \"(levels may vary)\", no \"(ranges differ)\", no \"(depending on testing)\". Repeated down a column those destroy the reader's trust in the whole table. If figures genuinely vary by batch or origin, say so ONCE in a sentence below the table.\n\nRULE 6 - \"not published\" IS A LAST RESORT. Check first whether the information is elsewhere in the brief under another label, or whether you are about to state it in prose anyway. Appearance, identity and use case are almost always derivable. HARD LIMIT: at most 3 uses in the whole article. Never \"not published here\".\n\nRULE 7 - INLINE LINKS ARE MANDATORY: at least 3 Markdown links inside body sentences, each on the claim it supports. Sources are marked [PRIMARY] (government, standards, academic), [HEALTH] (reputable medical organisations) or [competitor]. Link PRIMARY and HEALTH only, never a competitor. A [HEALTH] source may be linked for context but never sourced for a figure when a [PRIMARY] one exists. Maximum 2 links per domain, minimum 2 distinct domains.\nDO NOT write a references, sources or further-reading list anywhere. Never print a URL as plain text - every URL is a Markdown link whose anchor text names the publisher or the finding. Never \"click here\", \"source\", \"here\", \"read more\". Never fabricate or alter a URL.\n\nRULE 8 - IMAGES. Where the outline calls for image slots, insert Markdown images with descriptive alt text and a slug-style filename, one per option, right after the paragraph describing that option's appearance - for example ![Ceylon cinnamon quill showing many thin papery layers](ceylon-cinnamon-quill.jpg). Alt text must describe what is visible, since that is what ranks and what a screen reader reads. Always describe the visual difference in words too.\n\nRULE 9 - RESOLVE CONFLICTS, DO NOT NARRATE THEM. Follow each recommended_approach and state one figure with one direction and one unit. Never present a minimum and a maximum for the same thing as alternatives. Never tell the reader to \"check the method\" - that is procurement language.\n\nRULE 10 - BENEFITS, IF THE OUTLINE ASKS: cover them honestly as part of choosing. Say plainly where evidence is strong and where it is preclinical or thin - an honest limit builds more trust than an inflated claim. No dosage advice, no treatment claims, no suggestion the product manages a medical condition.\n\nRULE 11 - THE OPENING SECTION IS 3 TO 4 SEPARATE SHORT SENTENCES, one per option, each naming it and the single thing that decides it. Never one long semicolon-chained sentence.\n\nRULE 12 - ANSWER-FIRST EVERYWHERE ELSE. The first sentence under every H2 and H3 is a standalone direct answer with a concrete detail. Never open with a transition - no \"Before we get into\", \"When it comes to\", \"Let's take a look\".\n\nRULE 13 - NEVER WRITE ABOUT THE ARTICLE ITSELF. No sentence explaining which sources you used or how the table was built. Attribution goes inside the sentence using the figure, naming the publisher in passing.\n\nRULE 14 - SECTION DEPTH per the outline's labels: \"depth: primary\" roughly 150-250 words, \"depth: minor\" roughly 70-110, FAQ answers 40-60. Targets, not quotas. Never pad. Lengths must come out clearly uneven.\n\nRULE 15 - HEADINGS ARE READER-FACING ONLY. Strip any parenthetical that is a production note or format directive. Never append a keyword in parentheses. No country name in a heading.\n\nRULE 16 - COVER EVERY KEYWORD TOPIC in keyword_coverage, in the section named. Weave the keyword phrasings in naturally. Never a section whose only purpose is to place a keyword, never a keyword as a bracketed tag.\n\nRULE 17 - INTERNAL CONSISTENCY. Any figure must be identical everywhere it appears, table and FAQ included.\n\nRULE 18 - THE CLOSING SECTION is practical: what to look for and pick up next time, and how to store it. Mention TMICORP at most twice in the whole article, using only what is in the eeat_angle, phrased as a credibility note. Never \"contact us\", \"reach out to\", \"we offer\", \"manufacturers like TMICORP\".\n\nRULE 19 - US English spelling. ASCII hyphens only. No H1 - start with the first H2.\n\nRULE 20 - FAQ: each H3 a complete question ending in a question mark, answered in 1-3 sentences, first sentence answering directly. No \"Q:\" or \"A:\" prefixes.\n\nOUTPUT: the article in Markdown, ## for H2 and ### for H3. No preamble, no meta-commentary."
+        }
+      },
+      "id": "afa8e126-1025-48b1-8a70-db72a31c2699",
+      "name": "Writer C",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        3760,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.output }}",
+        "options": {
+          "systemMessage": "You are a magazine food editor rewriting a mechanical AI draft of a consumer buying guide into something a shopper anywhere in the world would read and use. Fix structure, depth and voice WITHOUT losing any figure, link, image or table.\n\n1. STRIP COUNTRY TARGETING. This article is read worldwide. Delete or rewrite: any price in a single currency, any sentence naming one country's food agency as the rule, any named supermarket or online store, and any sentence of the form \"in [country], shelves usually carry...\". Replace an absolute price with the relative level already stated in the draft - which option is premium, which is budget, roughly the multiple. Replace a single national limit with the international reference if the draft contains one; if it does not, say limits vary by country and cut the specific number. An entire section devoted to prices or shopping in one country gets rewritten into a market-neutral section or deleted.\nKEEP local product names. A passage explaining that a name like dalchini usually means one particular option is naming information every reader benefits from - preserve it, but make sure it reads as \"this name usually refers to X\" rather than \"advice for shoppers in country Y\".\n\n2. STRIP PROCUREMENT LANGUAGE. Delete every HS code, MOQ, Incoterm, FOB or wholesale price, per-metric-ton figure, container reference and ISO or ASTA method number. If a sentence's only content is a laboratory specification, replace it with what the reader can perceive or cut it.\n\n3. CHECK THAT EVERY NUMBER IS UNDER THE RIGHT LABEL. Oil content, moisture and a compound's concentration are all percentages and are easily swapped. If a figure looks implausible for the parameter it is labelled with - especially if a per-serving calculation comes out many times a stated safe limit - cut the figure and the calculation built on it rather than publishing it. Do not attempt to correct the value from your own knowledge; removing a wrong number is right, replacing it with a guess is not.\n\n4. TRANSLATE EVERY REMAINING NUMBER, using only information already in the draft. A concentration becomes how much you can use. A relative price becomes what it means at the shelf. If the draft gives you no way to translate a figure, cut the figure - a naked lab value is worse than none.\n\n5. CLEAN THE TABLE. Delete any hedging parenthetical inside a cell - \"(levels may vary)\", \"(ranges differ)\" - and if the variation is real, state it once in a sentence below the table. Read down each column: if every row holds the same value, DELETE that column and move the fact into the body as one sentence about the whole category.\n\n6. FILL CELLS YOU ALREADY KNOW. Any cell reading \"not published\" whose value appears elsewhere in the draft gets filled from there. At most 3 uses of the phrase survive; delete the word \"here\" everywhere. Filling a cell means moving information already in the draft - never supply a value from your own knowledge.\n\n7. NEVER INTRODUCE A NEW NUMBER. You may only move, restate or reformat figures already present.\n\n8. CONVERT ANY REFERENCE LIST INTO INLINE LINKS. If the draft ends with a References, Sources or Further reading list, DELETE it and attach each URL as a Markdown link inside the body sentence making the claim. Every bare URL becomes a Markdown link with anchor text naming the publisher. At least 3 inline links must survive and no list may remain. Never change a URL.\n\n9. KEEP EVERY IMAGE. Preserve Markdown images exactly and check each alt text describes what is visible rather than repeating the heading. Fix any alt text that is just a keyword.\n\n10. RESOLVE CONTRADICTIONS. If the same parameter appears as both a minimum and a maximum, or in two units, rewrite to one figure with one direction and one unit. Delete any sentence telling the reader to \"check the method\" or \"specify the basis\".\n\n11. DELETE EVERY SENTENCE ABOUT THE ARTICLE ITSELF - which sources were used, how the table was assembled.\n\n12. SPLIT THE OPENING. If the first section is one long semicolon-chained sentence, break it into 3-4 short sentences, one per option, each with its deciding point.\n\n13. FIX UNIFORM SECTION LENGTH. Deepen the sections that matter most to 150-250 words, leave minor ones at 70-110. Deepen only with substance already in the draft. Never with filler or restatement.\n\n14. DELETE RESTATEMENT SECTIONS, and any FAQ question the body already fully answers - if fewer than 4 remain, promote a genuinely different shopper question.\n\n15. WARM THE VOICE. Address the reader directly. Mix short punchy sentences with longer explanatory ones. Contractions are fine. Confident, never chatty or padded.\n\n16. NO OPENING TRANSITIONS. The first sentence under each heading is the direct answer and stays first. Strip \"Before we get into\", \"When it comes to\", \"Let's take a look\", \"Bringing it together\".\n\n17. CONVERT LABELED BULLET LISTS INTO PROSE. Keep true lists only for a sequential procedure or short scannable items under about five words. The comparison table stays a table; a what-to-check-on-the-label list may stay a list.\n\n18. CITATION LIMITS: max 2 links per domain, min 2 distinct domains. If a domain is linked three or more times, keep the 2 most load-bearing and unlink the rest, leaving sentence text intact. Rewrite any anchor reading \"click here\", \"source\", \"here\" or \"read more\" to name the publisher, without changing the URL.\n\n19. INTERNAL CONSISTENCY. Reconcile any figure appearing with two different values to one value everywhere, table and FAQ included.\n\n20. AVOID LABEL-COLON PATTERNS. US English spelling. No country name in any heading.\n\n21. KEEP the closing section practical. Strip any sales phrasing and add no further company mentions.\n\nKeep the remaining H2/H3 headings and their order, except where a rule above requires deleting or renaming one. Output the rewritten article in Markdown (## and ###). No preamble, no meta-commentary."
+        }
+      },
+      "id": "0ab5c92c-9802-4083-a9c2-c6794b90ee19",
+      "name": "Rewrite C",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        4144,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Markdown -> HTML deterministic cho nhanh Commercial.\n// So voi ban goc: da THEM xu ly anh ![alt](url) va duong ke ---\n\nconst md = String($input.first().json.output || '');\n\nfunction inline(s) {\n  return s\n    // anh PHAI xu ly TRUOC link, vi ![...](...) chua [...](...)\n    .replace(/!\\[([^\\]]*)\\]\\(([^)\\s]+)\\)/g, '<img src=\"$2\" alt=\"$1\" loading=\"lazy\">')\n    .replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>')\n    .replace(/(^|[^*])\\*([^*]+)\\*/g, '$1<em>$2</em>')\n    .replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g, '<a href=\"$2\" target=\"_blank\" rel=\"noopener\">$1</a>');\n}\n\nconst lines = md.replace(/\\r/g, '').split('\\n');\nconst out = [];\nlet i = 0;\n\nwhile (i < lines.length) {\n  const line = lines[i];\n  if (!line.trim()) { i++; continue; }\n\n  // duong ke ngang: --- hoac *** (truoc khi coi la list)\n  if (/^\\s*([-*_])\\s*\\1\\s*\\1[\\s\\-*_]*$/.test(line)) { out.push('<hr>'); i++; continue; }\n\n  if (/^### /.test(line)) { out.push(`<h3>${inline(line.slice(4).trim())}</h3>`); i++; continue; }\n  if (/^## /.test(line))  { out.push(`<h2>${inline(line.slice(3).trim())}</h2>`); i++; continue; }\n\n  if (/^> /.test(line)) {\n    const buf = [];\n    while (i < lines.length && /^> ?/.test(lines[i]) && lines[i].trim()) { buf.push(lines[i].replace(/^> ?/, '')); i++; }\n    out.push(`<blockquote><p>${inline(buf.join(' '))}</p></blockquote>`);\n    continue;\n  }\n\n  // bang markdown\n  if (/^\\|.*\\|\\s*$/.test(line) && i + 1 < lines.length && /^\\|[\\s:|-]+\\|\\s*$/.test(lines[i + 1])) {\n    const parseRow = l => l.trim().replace(/^\\|/, '').replace(/\\|$/, '').split('|').map(c => c.trim());\n    const header = parseRow(line);\n    i += 2;\n    const rows = [];\n    while (i < lines.length && /^\\|.*\\|\\s*$/.test(lines[i])) { rows.push(parseRow(lines[i])); i++; }\n    let t = '<table><thead><tr>' + header.map(h => `<th>${inline(h)}</th>`).join('') + '</tr></thead><tbody>';\n    t += rows.map(r => '<tr>' + r.map(c => `<td>${inline(c)}</td>`).join('') + '</tr>').join('');\n    t += '</tbody></table>';\n    out.push(t);\n    continue;\n  }\n\n  if (/^\\d+\\. /.test(line)) {\n    const buf = [];\n    while (i < lines.length && /^\\d+\\. /.test(lines[i])) { buf.push(lines[i].replace(/^\\d+\\. /, '')); i++; }\n    out.push('<ol>' + buf.map(b => `<li>${inline(b)}</li>`).join('') + '</ol>');\n    continue;\n  }\n\n  if (/^[-*] /.test(line)) {\n    const buf = [];\n    while (i < lines.length && /^[-*] /.test(lines[i])) { buf.push(lines[i].replace(/^[-*] /, '')); i++; }\n    out.push('<ul>' + buf.map(b => `<li>${inline(b)}</li>`).join('') + '</ul>');\n    continue;\n  }\n\n  const buf = [line];\n  i++;\n  while (i < lines.length && lines[i].trim() && !/^(## |### |\\||[-*] |\\d+\\. |> )/.test(lines[i])) {\n    buf.push(lines[i]); i++;\n  }\n  out.push(`<p>${inline(buf.join(' ').trim())}</p>`);\n}\n\nreturn [{ json: { output: out.join('\\n') } }];"
+      },
+      "id": "df9b5de1-8b62-4397-96cf-2c7df3dea8f6",
+      "name": "MD to HTML C",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4720,
+        576
+      ],
+      "notes": "Ban va cua Markdown to HTML: THEM anh ![alt](url) va --- thanh <hr>."
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.output }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You generate SEO metadata for TMICORP's CONSUMER buying guides on tmicorpgroup.com. The reader is a shopper comparing options before buying, not a procurement professional.\n\nChosen title, already decided from SERP research:\n{{ $('Code Brief C').item.json.title }}\n\nPrimary keyword: {{ $('Code Brief C').item.json.primary }}\nSecondary keywords: {{ $('Code Brief C').item.json.secondary }}\nReader's market: {{ $('Code Brief C').item.json.target_market }}\n\nYou will receive the full article in Markdown. From its ACTUAL content generate:\n- slug: lowercase, hyphens, 3-6 words, keyword-first, under 60 characters, no stopwords, derived from the chosen title\n- title_seo: under 70 characters, keyword near the front. It MUST be the chosen title, or a lightly trimmed variant if it exceeds 70 characters - never a different title\n- meta_description: 140-160 characters including the primary keyword. Signal that the page compares the options and helps the reader pick. Where the article contains one concrete figure or a named set of options, use it - a specific detail outperforms generic praise. Write for a shopper, so no trade or specification jargon\n- tags: 3-6 lowercase tags separated by commas, from the article's real topics\n- excerpt: 30-50 words, one or two sentences, framed around the choice the reader is making\n\nInvent nothing not in the article. Return JSON only, no text outside the JSON."
+        }
+      },
+      "id": "ae749133-1d73-4c17-a612-2e3cc934b580",
+      "name": "Meta C",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        4640,
+        944
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"slug\": \"cinnamon-grades-compared-sourcing\",\n  \"title_seo\": \"Cinnamon Grades Compared: Ceylon vs Cassia vs Saigon\",\n  \"meta_description\": \"Compare cinnamon grades on coumarin, volatile oil and price per kg, plus the HS codes, moisture limits and MOQ terms to specify when ordering in bulk.\",\n  \"tags\": \"cinnamon sourcing, spice grades, hs code, wholesale spices, vietnam export\",\n  \"excerpt\": \"Choosing between Ceylon, cassia and Saigon cinnamon comes down to four measurable specs. Here is how the grades compare and what to pin down on the purchase order.\"\n}"
+      },
+      "id": "9ee1aace-910d-45b2-befe-5cd8201ba40d",
+      "name": "Meta C Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        4800,
+        1184
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "24f65554-e8c8-42a5-8712-c9fd4be294ef",
+      "name": "Merge Output C",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        4928,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gop HTML + Meta, chen block tac gia, JSON-LD, QA audit cho bai\n// COMMERCIAL B2C, doc gia TOAN CAU (khong nham quoc gia nao).\n\nconst items = $input.all();\nif (items.length < 2) {\n  throw new Error(`Merge Output C chi nhan duoc ${items.length} item - can dung 2 (MD to HTML C + Meta C).`);\n}\n\nconst htmlItem = items.find(i => typeof i.json.output === 'string');\nconst metaItem = items.find(i => i.json.output && typeof i.json.output === 'object');\n\nlet html = htmlItem?.json?.output || '';\nconst meta = metaItem?.json?.output || {};\n\nconst brief = $('Code Brief C').first().json;\nconst chosenTitle = brief.title || meta.title_seo || '';\nconst today = new Date().toISOString().slice(0, 10);\nconst author = 'TMICORP Editorial Team';\n\nhtml = html\n  .replace(/\\u2011/g, '-').replace(/\\u00A0/g, ' ')\n  .replace(/<h3>Q:\\s*/g, '<h3>').replace(/<p>A:\\s*/g, '<p>');\n\nconst warn = [];\nconst bodyOnly = html.replace(/<script[\\s\\S]*?<\\/script>/g, '');\nconst text = bodyOnly.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ');\nconst low = text.toLowerCase();\n\n// ---- 1. NHAM QUOC GIA (bai phai trung tinh thi truong) ----\nconst CURRENCY = /(\\u20b9|\\u00a3|\\u20ac|\\u00a5|\\bINR\\b|\\bUSD\\b|\\bEUR\\b|\\bGBP\\b|\\bRs\\.?\\s?\\d|\\$\\s?\\d)/;\nif (CURRENCY.test(text)) {\n  warn.push('CO GIA THEO MOT LOAI TIEN TE - bai doc toan cau, phai dung muc gia tuong doi');\n}\nconst NAT_AGENCY = ['fssai', 'fda', 'usda', 'food standards agency', 'anvisa', 'cfia', 'fsanz'];\nconst agencyHits = NAT_AGENCY.filter(a => new RegExp(`\\\\b${a}\\\\b`, 'i').test(text));\nif (agencyHits.length) {\n  warn.push(`DAN CO QUAN QUOC GIA: ${agencyHits.join(', ')} - dung tham chieu quoc te (EFSA, WHO, Codex, BfR) thay the`);\n}\nconst RETAILERS = ['walmart', 'kroger', 'tesco', 'aldi', 'costco', 'bigbasket', 'amazon.in',\n  'flipkart', 'target', 'sainsbury', 'carrefour', 'lidl', 'woolworths'];\nconst retailHits = RETAILERS.filter(r => new RegExp(r, 'i').test(low));\nif (retailHits.length) warn.push(`NEU TEN CHUOI BAN LE: ${retailHits.join(', ')} - phai noi chung chung`);\n\nconst COUNTRY_HEAD = /(in|for) (india|the us|the united states|the uk|australia|canada|europe)\\b/i;\nfor (const m of html.matchAll(/<h[23]>([^<]+)<\\/h[23]>/g)) {\n  if (COUNTRY_HEAD.test(m[1])) { warn.push(`Heading nham quoc gia: ${m[1].trim()}`); break; }\n}\n\n// ---- 2. B2B JARGON ----\nconst B2B = ['hs code', 'hs heading', 'moq', 'incoterm', ' fob ', 'per metric ton',\n  'purchase order', 'iso 6571', 'iso 939', 'iso 928', 'iso 930', 'iso 948',\n  'asta cleanliness', 'acid-insoluble ash', 'wholesale price', 'container load'];\nconst b2bHits = B2B.filter(p => new RegExp(p.trim(), 'i').test(low));\nif (b2bHits.length) warn.push(`NGON NGU B2B lot vao bai B2C: ${b2bHits.join(', ')}`);\n\n// ---- 3. PHU SECONDARY KEYWORD ----\nconst STOP = new Set(['of','the','and','in','with','for','a','an','to','types','type','kinds','kind','different']);\nconst secondaries = String(brief.secondary || '').split(/[,;\\n|]/).map(s => s.trim()).filter(Boolean);\nconst missing = [];\nfor (const kw of secondaries) {\n  const words = kw.toLowerCase().split(/\\s+/).filter(w => w.length > 2 && !STOP.has(w));\n  if (!words.length) continue;\n  if (words.filter(w => low.includes(w)).length / words.length < 0.6) missing.push(kw);\n}\nconst coverPct = secondaries.length\n  ? Math.round(((secondaries.length - missing.length) / secondaries.length) * 100) : 100;\nif (missing.length) warn.push(`Secondary chua phu (${coverPct}%): ${missing.join(' / ')}`);\n\n// ---- 4. ANH ----\nconst imgCount = (bodyOnly.match(/<img /gi) || []).length;\nif (/image|picture|photo/i.test(String(brief.secondary || '')) && imgCount === 0) {\n  warn.push('Secondary co keyword \"images\" nhung bai khong co the <img> nao');\n}\nconst badAlt = (bodyOnly.match(/<img (?![^>]*alt=\"[^\"]{15,})[^>]*>/gi) || []).length;\nif (imgCount && badAlt) warn.push(`${badAlt}/${imgCount} anh thieu alt text mo ta`);\n\n// ---- 5. BANG SO SANH ----\nconst tableCount = (html.match(/<table/gi) || []).length;\nlet deadCols = [], emptyCellPct = 0, hedgeCells = 0;\nif (tableCount === 0) {\n  warn.push('KHONG CO BANG SO SANH - bai commercial khong dat');\n} else {\n  const tbody = html.match(/<tbody>[\\s\\S]*?<\\/tbody>/i)?.[0] || '';\n  const rows = [...tbody.matchAll(/<tr>([\\s\\S]*?)<\\/tr>/g)]\n    .map(m => [...m[1].matchAll(/<td>([\\s\\S]*?)<\\/td>/g)]\n      .map(c => c[1].replace(/<[^>]*>/g, '').trim()));\n  if (rows.length < 3) warn.push(`Bang chi co ${rows.length} dong - can it nhat 3`);\n\n  // rao chan bat dinh nhoi trong o\n  const HEDGE = /(may vary|can vary|ranges? (differ|vary)|depending on (testing|sample|origin|batch)|approximate|varies by)/i;\n  hedgeCells = rows.flat().filter(c => HEDGE.test(c)).length;\n  if (hedgeCells >= 3) {\n    warn.push(`${hedgeCells} o bang co rao chan kieu \"may vary\" - chuyen thanh 1 cau duoi bang`);\n  }\n\n  if (rows.length > 1) {\n    const headers = [...(html.match(/<thead>[\\s\\S]*?<\\/thead>/i)?.[0] || '')\n      .matchAll(/<th>([\\s\\S]*?)<\\/th>/g)].map(h => h[1].replace(/<[^>]*>/g, '').trim());\n    const nCol = Math.max(...rows.map(r => r.length));\n    for (let c = 1; c < nCol; c++) {\n      const col = rows.map(r => (r[c] ?? '').toLowerCase());\n      if (new Set(col).size === 1 && col[0] !== '') deadCols.push(headers[c] || `cot ${c + 1}`);\n    }\n    if (deadCols.length) warn.push(`Cot bang khong so sanh duoc: ${deadCols.join(', ')}`);\n    const cells = rows.flatMap(r => r.slice(1)).map(c => c.toLowerCase());\n    const empty = cells.filter(c => !c || /^(not published|n\\/a|-|\\u2014)$/.test(c)).length;\n    emptyCellPct = cells.length ? Math.round((empty / cells.length) * 100) : 0;\n    if (emptyCellPct > 25) warn.push(`Bang rong ${emptyCellPct}% o`);\n    if (CURRENCY.test(rows.flat().join(' '))) warn.push('Bang co gia theo tien te cu the - phai la muc gia tuong doi');\n  }\n}\n\n// ---- 6. \"not published\" ----\nconst npCount = (low.match(/not published/g) || []).length;\nif (npCount > 3) warn.push(`\"not published\" xuat hien ${npCount} lan (toi da 3)`);\nif (/not published here/i.test(text)) warn.push('Con cum \"not published here\"');\n\n// ---- 7. LINK ----\nconst linkCount = (bodyOnly.match(/<a [^>]*href=/gi) || []).length;\nif (linkCount < 3) warn.push(`Chi co ${linkCount} link inline - can it nhat 3`);\nif (/<(h2|h3|p)[^>]*>\\s*(references?|sources?|citations?|further reading)\\b/i.test(bodyOnly)) {\n  warn.push('Co danh sach References/Sources - phai chuyen thanh link inline');\n}\nif (/https?:\\/\\//.test(bodyOnly.replace(/<a [^>]*>|<\\/a>|href=\"[^\"]*\"|src=\"[^\"]*\"/g, ''))) {\n  warn.push('Co URL tran trong body');\n}\n\n// ---- 8. MARKDOWN SOT / META-COMMENTARY ----\nif (/!\\[[^\\]]*\\]\\(/.test(html)) warn.push('Con markdown anh chua render');\nif (/(^|\\n)\\s*---\\s*(\\n|$)/.test(html)) warn.push('Con dau --- chua thanh <hr>');\nconst metaTalk = ['notes on sources', 'sources within cells', 'references include',\n  'citations include', 'this article cites', 'the research above', 'as used in this article'];\nconst metaHits = metaTalk.filter(p => low.includes(p));\nif (metaHits.length) warn.push(`Meta-commentary lot vao bai: ${metaHits.join(', ')}`);\n\n// ---- 9. CAU MO DAU ----\nconst firstPara = bodyOnly.match(/<h2>[\\s\\S]*?<\\/h2>\\s*<p>([\\s\\S]*?)<\\/p>/)?.[1]?.replace(/<[^>]*>/g, '') || '';\nconst firstSentence = firstPara.split(/(?<=\\.)\\s/)[0] || '';\nif ((firstSentence.match(/;/g) || []).length >= 2) warn.push('Cau mo dau la chuoi ghep bang dau ;');\nif (firstSentence.split(/\\s+/).length > 45) warn.push(`Cau dau tien dai ${firstSentence.split(/\\s+/).length} tu`);\n\n// ---- 10. SO LIEU ----\nconst figuresGiven = (brief.decision_figures || []).length;\nconst numbersInBody = (text.match(/\\b\\d+(?:[.,]\\d+)?\\s*(?:%|mg\\/kg|ppm|ppb|\\bg\\b|kg)/gi) || []).length;\nif (figuresGiven === 0) warn.push('Facts C khong tim duoc so lieu nao - xem lai query trong Search Planner C');\nelse if (numbersInBody < 3) warn.push(`Brief co ${figuresGiven} so lieu nhung bai chi dung ${numbersInBody}`);\n\n// ---- 11. GIONG BAN HANG / HEADING BAN / FAQ ----\nconst salesy = ['contact us', 'reach out to us', 'we offer', 'our products are', 'manufacturers like tmicorp'];\nconst salesHits = salesy.filter(p => low.includes(p));\nif (salesHits.length) warn.push(`Giong ban hang: ${salesHits.join(', ')}`);\n\nconst dirty = [];\nfor (const m of html.matchAll(/<h[23]>([^<]+)<\\/h[23]>/g)) {\n  if (/\\((?:render|use|using|target|insert|include|note|format|framing|keyword|placement|depth)\\b[^)]*\\)/i.test(m[1])) dirty.push(m[1].trim());\n}\nif (dirty.length) warn.push(`Heading co chi dan lot: ${dirty.join(' | ')}`);\n\nconst faqs = [];\nfor (const m of html.matchAll(/<h3>([^<]*\\?)<\\/h3>\\s*<p>([\\s\\S]*?)<\\/p>/g)) {\n  faqs.push({ q: m[1].trim(), a: m[2].replace(/<[^>]*>/g, '').trim() });\n}\nif (faqs.length < 4) warn.push(`Chi tim thay ${faqs.length} FAQ - can 4-6`);\n\n// ---- disclaimer khi co benefits ----\nconst disclaimer = /benefit|antioxidant|blood sugar|anti-inflammat/i.test(text)\n  ? '<div class=\"disclaimer\"><p><em>This article is for general information only and is not medical advice. Talk to a qualified healthcare professional about your own situation.</em></p></div>'\n  : '';\n\nconst eeatTop = `<div class=\"post-meta\"><p><strong>By ${author}</strong> | Last updated: ${today}</p></div>`;\n\nconst ld = [{\n  '@context': 'https://schema.org', '@type': 'Article',\n  headline: meta.title_seo || chosenTitle,\n  description: meta.meta_description || '',\n  datePublished: today, dateModified: today,\n  author: { '@type': 'Organization', name: author },\n  publisher: {\n    '@type': 'Organization',\n    name: 'TMICORP - Toan My International Trading Investment JSC.',\n    url: 'https://tmicorpgroup.com',\n    address: { '@type': 'PostalAddress', addressLocality: 'Hanoi', addressCountry: 'VN' },\n  },\n}];\n\nif (faqs.length > 0) {\n  ld.push({\n    '@context': 'https://schema.org', '@type': 'FAQPage',\n    mainEntity: faqs.map(f => ({\n      '@type': 'Question', name: f.q,\n      acceptedAnswer: { '@type': 'Answer', text: f.a },\n    })),\n  });\n}\n\nconst finalHtml = [eeatTop, disclaimer, html,\n  `<script type=\"application/ld+json\">${JSON.stringify(ld)}</script>`].filter(Boolean).join('\\n');\n\nconst BLOCKERS = /KHONG CO BANG SO SANH|link inline|URL tran|References\\/Sources|Bang rong|NGON NGU B2B|CO GIA THEO MOT LOAI TIEN TE|DAN CO QUAN QUOC GIA|NEU TEN CHUOI BAN LE/i;\nconst blockers = warn.filter(w => BLOCKERS.test(w));\n\nreturn [{\n  json: {\n    html: finalHtml, flow: 'commercial-b2c',\n    chosen_title: chosenTitle,\n    slug: meta.slug || '', title_seo: meta.title_seo || '',\n    meta_description: meta.meta_description || '',\n    tags: meta.tags || '', excerpt: meta.excerpt || '',\n    word_count: text.split(/\\s+/).filter(Boolean).length,\n    secondary_coverage_pct: coverPct,\n    secondary_missing: missing.join(' / ') || 'none',\n    image_count: imgCount,\n    table_count: tableCount,\n    dead_columns: deadCols.join(', ') || 'none',\n    hedge_cells: hedgeCells,\n    empty_cell_pct: emptyCellPct,\n    link_count: linkCount,\n    not_published_count: npCount,\n    faq_count: faqs.length,\n    figures_available: figuresGiven,\n    figures_used_approx: numbersInBody,\n    row_number: brief.row_number,\n    qa_warnings: warn.length ? warn.join(' | ') : 'OK',\n    qa_blockers: blockers.length ? blockers.join(' | ') : 'none',\n    qa_pass: blockers.length === 0,\n  }\n}];"
+      },
+      "id": "bfd4609c-85e1-4a09-a0c8-88e89420fc27",
+      "name": "Assemble C",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5216,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "createFromText",
+        "content": "={{ $json.html }}",
+        "name": "=b2c-{{ $json.slug }}.html",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "cachedResultName": "/ (Root folder)",
+          "mode": "list",
+          "value": "root"
+        },
+        "options": {}
+      },
+      "id": "30a7ceab-7c79-4ede-bcc1-d74c2f4389bd",
+      "name": "Create HTML C",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        5440,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "cachedResultName": "Marketing plan",
+          "mode": "list",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "cachedResultName": "KEY WORD SEO",
+          "mode": "list",
+          "value": 1827161699
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Meta": "=slug:{{ $('Assemble C').item.json.slug }}\nmeta_description:{{ $('Assemble C').item.json.meta_description }}\ntags:{{ $('Assemble C').item.json.tags }}\nexcerpt:{{ $('Assemble C').item.json.excerpt }}\n\n\nchỉ số của bài SEO\n-------------------------------QA ---------------------------\nBLOCKERS: {{ $('Assemble C').item.json.qa_blockers }}\nWARNINGS: {{ $('Assemble C').item.json.qa_warnings }}\nwords:{{ $('Assemble C').item.json.word_count }} | secondary:{{ $('Assemble C').item.json.secondary_coverage_pct }}% | links:{{ $('Assemble C').item.json.link_count }} | imgs:{{ $('Assemble C').item.json.image_count }} | table_empty:{{ $('Assemble C').item.json.empty_cell_pct }}% | dead_cols:{{ $('Assemble C').item.json.dead_columns }}\nmissing_kw: {{ $('Assemble C').item.json.secondary_missing }}",
+            "Title": "={{ $('Assemble C').item.json.title_seo }}",
+            "link": "=https://drive.google.com/file/d/{{ $json.id }}",
+            "row_number": "={{ $('Assemble C').item.json.row_number }}",
+            "status": "Written",
+            "KW_ID": "={{ $('Get row(s) in sheet1').item.json.row_number }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "KW_ID",
+              "displayName": "KW_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Pillar Topic",
+              "displayName": "Pillar Topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Seed",
+              "displayName": "Seed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Geolocation",
+              "displayName": "Geolocation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Tavily",
+              "displayName": "Tavily",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Search Intent",
+              "displayName": "Search Intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Buyer",
+              "displayName": "Buyer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "primary",
+              "displayName": "primary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "secondary",
+              "displayName": "secondary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Meta",
+              "displayName": "Meta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "link",
+              "displayName": "link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "534adc3b-d70b-4f90-bbac-6b7c1c336e19",
+      "name": "Update Sheet C",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5664,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Plan the research for: {{ $json.primary }}\nSecondary: {{ $json.secondary }}\nKeyword-research market (search behaviour reference only, NOT the reader's country): {{ $json.target_market }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You plan the web research for a COMMERCIAL-INTENT, CONSUMER-FACING (B2C) article published by TMICORP on tmicorpgroup.com.\n\nWHO THE READER IS: an ordinary shopper or home cook deciding which version of a product to buy, ANYWHERE IN THE WORLD. NOT an importer, NOT a sourcing manager. They will never see a purchase order. Do not plan research about HS codes, MOQ, Incoterms, container loads, or ISO test-method numbers.\n\nWHAT COMMERCIAL INTENT MEANS HERE: the reader is comparing options before buying at retail. They want to know which type to pick, how the types differ in taste and quality, which is safer for regular use, roughly how the price levels compare, and how to tell the options apart on the shelf.\n\nARTICLE BRIEF - the primary and secondary keywords define what this article is about. They are the specification. Do not substitute a topic you find more interesting.\n- Primary keyword: {{ $json.primary }}\n- Secondary keywords: {{ $json.secondary }}\n- Product / seed: {{ $json.seed }}\n- Title (may be empty): {{ $json.Title }}\n- KEYWORD-RESEARCH MARKET (search behaviour reference only): {{ $json.target_market }}\n- SEARCH REGION (where to look for good English-language sources): {{ $json.search_region }}\n\nHOW TO USE THE KEYWORD-RESEARCH MARKET - READ THIS CAREFULLY.\nThat market code tells you ONE thing: which audience's search behaviour the keyword list came from. Use it only to understand WHAT the reader is asking and WHICH WORDS they use - for example a local product name appearing in the keywords, or a form of the product that is popular there.\n\nIT IS NOT THE READER'S LOCATION AND THE ARTICLE IS NOT TARGETED AT THAT COUNTRY. So you must NOT plan research on:\n- retail prices in that country's currency\n- that country's food-safety agency as the article's regulatory anchor\n- named shops, supermarkets or e-commerce sites in that country\n- availability or shopping habits specific to that country\nThe finished article must read equally well to someone in any country. Plan research that is internationally valid: the internationally recognised limits and the bodies that set them, relative price levels between the options rather than absolute local prices, and where the options are generally sold - specialty versus general grocery - without naming a country's retailers.\n\nSTEP 1 - PRODUCT FORM\nSet product_form to one of: canned, dried, nuts, frozen, rice, pickled, sauce, spice, brined, vinegar, other. TMICORP's range is canned fruit and vegetables; dried fruit, vegetables and nuts; frozen fruit and vegetables; Japonica rice; pickles; sauces; spices (cinnamon, star anise, black cardamom, pepper, chilli, ginger); grape leaves in brine; fruit vinegar. If the topic is outside that range, set in_range to false and say so in reasoning, but still produce queries.\n\nSTEP 2 - WHAT IS BEING COMPARED\nRead the keywords and list the options the reader wants compared in compared_options, using the names a shopper would recognise, with the technical name in brackets only if the keywords contain it. Cap at 4. If the keywords name a count - for example \"4 types of X\" - honour that count exactly. If the article is not a comparison, return an empty array.\n\nSTEP 3 - MAP THE SECONDARY KEYWORDS\nThe secondary keywords are a coverage checklist and they tell you what the reader actually wants. Group them into distinct topics in keyword_topics: topic name, the keywords it absorbs, and whether it needs its own research query.\nTreat these signals as instructions:\n- \"images\", \"pictures\", \"with photos\" means the article needs visual identification, so plan research on how each option LOOKS - colour, layer structure, thickness, shape, smell\n- \"benefits\" means the reader wants benefits covered. Do not refuse it\n- a local or non-English product name - dalchini, canela, kayu manis - means plan a query on that NAME: which option it usually refers to, and where the name is used. This is a fact about the product's naming, not a reason to target a country. Keep it\n- \"sticks\" versus \"powder\", \"whole\" versus \"ground\" means form differences matter\n- \"vs\", \"substitute\", \"alternative\" means a head-to-head section\nIf a secondary keyword genuinely cannot serve this article's intent, put it in dropped_keywords with a one-line reason. The bar is high - the client chose these keywords.\n\nSTEP 4 - WRITE THE SEARCH QUERIES\nProduce 5 to 8 queries, each with purpose exactly serp, option, attribute, safety, price or naming.\n\n- exactly ONE serp query: the bare primary keyword\n- ONE option query per entry in compared_options (up to 4), naming that option explicitly, aimed at what a consumer notices: appearance, flavour strength, aroma, and the one measurable that separates it from the others. A single category-level query returns only facts shared by every option and cannot fill a comparison table - this is the most common failure of this workflow\n- ONE safety query when a health or intake limit affects which option to buy. Aim it at the internationally recognised limit and the body that set it - EFSA, WHO, Codex, a national institute whose assessment is used internationally - NOT at one country's retail regulator\n- ONE price query aimed at RELATIVE price levels between the options - which is the premium one, which is the budget one, roughly how many times more expensive. Never ask for a price in one country's currency\n- ONE naming query when step 3 found a local-name keyword\n- ONE attribute query for any remaining keyword topic that needs research\n\nQuery rules: under about 12 words each; no quotation marks or boolean operators; no duplicates; no brand names; English only.\n\nSTEP 5 - COMPARISON TABLE COLUMNS\nPropose 5 to 7 columns that are real decision criteria FOR A SHOPPER: identity, appearance, flavour or strength, the safety or quality measurable that matters, relative price level, best use. Never a laboratory method limit. Never a column holding a price in a single currency - a relative price tier column travels; a rupee or dollar figure does not.\n\nA COLUMN MUST BE ABLE TO DIFFER BETWEEN OPTIONS. Never propose a column that would hold the same value on every row. Ask for each candidate: would the cells read differently for each option? If not, drop it. Always include an identity column, a relative price column, and a use column, plus an appearance column whenever the keywords ask for visual identification.\n\nSTEP 6 - WHAT TO CHECK WHEN BUYING\nList in buying_checklist what the reader should look for on the label or package at the point of purchase - the name to look for, the form, the origin claim, the ingredient list, packaging condition. Everything must be checkable in any shop in any country without a laboratory. Do not include a country-specific certification mark.\n\nReturn JSON only, no text outside the JSON."
+        }
+      },
+      "id": "ee70786f-72b8-4a05-964e-5ddec2b5fe18",
+      "name": "Search Planner C",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1456,
+        768
+      ],
+      "notes": "Quyet dinh search GI, dua theo dang san pham. Khong hardcode query."
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"product_form\": \"spice\",\n  \"in_range\": true,\n  \"compared_options\": [\"Ceylon or true cinnamon (Cinnamomum verum)\", \"Chinese cassia (C. cassia)\", \"Saigon or Vietnamese cinnamon (C. loureiroi)\", \"Korintje or Indonesian cinnamon (C. burmannii)\"],\n  \"keyword_topics\": [\n    { \"topic\": \"How to tell the types apart by sight\", \"keywords\": [\"cinnamon types with images\", \"types of cinnamon sticks\", \"types of cinnamon bark\"], \"needs_query\": true },\n    { \"topic\": \"Health benefits by type\", \"keywords\": [\"cinnamon types and benefits\"], \"needs_query\": true },\n    { \"topic\": \"Local naming in India\", \"keywords\": [\"dalchini types\"], \"needs_query\": true },\n    { \"topic\": \"Sticks versus powder\", \"keywords\": [\"types of cinnamon powder\", \"types of cinnamon sticks\"], \"needs_query\": false },\n    { \"topic\": \"How many types there are\", \"keywords\": [\"2 types of cinnamon\", \"4 types of cinnamon\", \"kinds of cinnamon\", \"cinnamon varieties\", \"different types of cinnamon\"], \"needs_query\": false }\n  ],\n  \"dropped_keywords\": [\n    { \"keyword\": \"types of cinnamon trees\", \"reason\": \"Botanical tree taxonomy does not help someone choosing cinnamon to buy; the species names are already covered by the option rows.\" }\n  ],\n  \"queries\": [\n    { \"purpose\": \"serp\", \"query\": \"cinnamon types\" },\n    { \"purpose\": \"option\", \"query\": \"ceylon cinnamon appearance flavour coumarin how to identify\" },\n    { \"purpose\": \"option\", \"query\": \"cassia cinnamon coumarin content flavour strength appearance\" },\n    { \"purpose\": \"option\", \"query\": \"saigon cinnamon flavour strength volatile oil vietnam\" },\n    { \"purpose\": \"option\", \"query\": \"korintje cinnamon indonesia flavour appearance common uses\" },\n    { \"purpose\": \"safety\", \"query\": \"coumarin daily intake limit cinnamon FSSAI India safe amount\" },\n    { \"purpose\": \"price\", \"query\": \"ceylon cinnamon price per kg India retail rupees\" },\n    { \"purpose\": \"local\", \"query\": \"dalchini meaning india which cinnamon type sold as dalchini\" }\n  ],\n  \"table_columns\": [\"Type\", \"How it looks\", \"Flavour\", \"Coumarin level\", \"Typical price in India\", \"Best for\"],\n  \"buying_checklist\": [\"the word Ceylon or true cinnamon on the label\", \"soft many-layered quills versus one thick hard curl\", \"country of origin\", \"whole sticks over pre-ground for freshness\", \"sealed packaging with a visible best-before date\"],\n  \"reasoning\": \"Reader is in India (target market in) but the best English sources sit in US search results, so queries are English while the price query asks for Indian retail rupees and the safety query names FSSAI. One query per type because a generic cinnamon query returns only shared facts and leaves the comparison table empty. Laboratory method limits like ISO 939 moisture were excluded entirely - this is a shopper, not a buyer.\"\n}"
+      },
+      "id": "919eec17-be9d-42a6-9847-cb162cbc610b",
+      "name": "Planner Parser C",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1536,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tach ke hoach search cua planner thanh 1 item / 1 query.\n\nconst plan = $input.first().json.output ?? $input.first().json;\nconst row  = $('Prep Commercial').first().json;\n\nconst queries = Array.isArray(plan.queries) ? plan.queries : [];\nconst VALID = ['serp', 'option', 'attribute', 'safety', 'price', 'local'];\nconst seen = new Set();\nconst out = [];\n\nfor (const q of queries) {\n  const query = String(q?.query || '').trim();\n  if (!query) continue;\n\n  let purpose = String(q?.purpose || 'attribute').trim().toLowerCase();\n  if (!VALID.includes(purpose)) purpose = 'attribute';\n\n  const key = query.toLowerCase();\n  if (seen.has(key)) continue;\n  seen.add(key);\n\n  out.push({ json: {\n    ...row,\n    query,\n    purpose,\n    product_form:     plan.product_form     || 'other',\n    in_range:         plan.in_range !== false,\n    compared_options: plan.compared_options || [],\n    keyword_topics:   plan.keyword_topics   || [],\n    dropped_keywords: plan.dropped_keywords || [],\n    table_columns:    plan.table_columns    || [],\n    buying_checklist: plan.buying_checklist || [],\n    plan_reasoning:   plan.reasoning        || '',\n  }});\n}\n\nif (out.length === 0) {\n  throw new Error('Search Planner C khong tra ve query nao.');\n}\nif (!out.some(i => i.json.purpose === 'serp')) out[0].json.purpose = 'serp';\n\nreturn out;"
+      },
+      "id": "0c1b5818-367c-432b-9d80-d2e75083f683",
+      "name": "Expand Queries C",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "query": "={{ $json.query }}",
+        "options": {
+          "search_depth": "advanced",
+          "max_results": 8,
+          "include_answer": "basic",
+          "include_raw_content": true,
+          "country": "={{ $json.Tavily }}"
+        }
+      },
+      "id": "02fdf94c-958f-43bf-97a1-1837039de437",
+      "name": "Search Web C",
+      "type": "@tavily/n8n-nodes-tavily.tavily",
+      "typeVersion": 1,
+      "position": [
+        2096,
+        768
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "notes": "Chay 1 lan cho MOI query do planner soan ra."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Chuan hoa dau cau TRUOC khi doi sang HTML.\n// Bo em dash (U+2014) va en dash (U+2013).\n// GIU NGUYEN hyphen thuong trong tu ghep: low-calorie, nutrient-rich...\nfunction cleanTypography(input) {\n  let s = String(input || '');\n  const keep = [];\n\n  // Bao ve URL trong markdown link va image: ](...)\n  s = s.replace(/\\]\\([^)\\s]+\\)/g, (m) => '\\u0000' + (keep.push(m) - 1) + '\\u0000');\n\n  s = s\n    .replace(/(\\d)\\s*\\u2013\\s*(\\d)/g, '$1-$2')   // 3-5 days\n    .replace(/(\\S)\\u2013(\\S)/g, '$1-$2')          // vitamin C-driven\n    .replace(/\\s*\\u2013\\s*/g, ', ')               // en dash con lai\n    .replace(/\\s*\\u2014\\s*/g, ', ')               // em dash -> dau phay\n    .replace(/[\\u201C\\u201D]/g, '\"')\n    .replace(/[\\u2018\\u2019]/g, \"'\")\n    .replace(/\\u2026/g, '...')\n    .replace(/\\u00A0/g, ' ')\n    .replace(/,\\s*,+/g, ',')\n    .replace(/[ \\t]+,/g, ',')\n    .replace(/,\\s*([.;:!?])/g, '$1');\n\n  return s.replace(/\\u0000(\\d+)\\u0000/g, (_, i) => keep[i]);\n}\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, output: cleanTypography(item.json.output) }\n}));"
+      },
+      "id": "c1bfcc7c-2b67-4ea3-9c7c-b53ff5295ae6",
+      "name": "Clean Typography",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4608,
+        112
+      ],
+      "notes": "Bo em dash / en dash. Giu hyphen tu ghep."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Chuan hoa dau cau TRUOC khi doi sang HTML (nhanh Commercial).\n// Bo em dash (U+2014) va en dash (U+2013).\n// GIU NGUYEN hyphen thuong trong tu ghep: low-calorie, nutrient-rich...\nfunction cleanTypography(input) {\n  let s = String(input || '');\n  const keep = [];\n\n  // Bao ve URL trong markdown link va image: ](...)\n  s = s.replace(/\\]\\([^)\\s]+\\)/g, (m) => '\\u0000' + (keep.push(m) - 1) + '\\u0000');\n\n  s = s\n    .replace(/(\\d)\\s*\\u2013\\s*(\\d)/g, '$1-$2')   // 3-5 days\n    .replace(/(\\S)\\u2013(\\S)/g, '$1-$2')          // vitamin C-driven\n    .replace(/\\s*\\u2013\\s*/g, ', ')               // en dash con lai\n    .replace(/\\s*\\u2014\\s*/g, ', ')               // em dash -> dau phay\n    .replace(/[\\u201C\\u201D]/g, '\"')\n    .replace(/[\\u2018\\u2019]/g, \"'\")\n    .replace(/\\u2026/g, '...')\n    .replace(/\\u00A0/g, ' ')\n    .replace(/,\\s*,+/g, ',')\n    .replace(/[ \\t]+,/g, ',')\n    .replace(/,\\s*([.;:!?])/g, '$1');\n\n  return s.replace(/\\u0000(\\d+)\\u0000/g, (_, i) => keep[i]);\n}\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, output: cleanTypography(item.json.output) }\n}));"
+      },
+      "id": "501c146a-fbc8-42f0-824c-abb2a32d92ed",
+      "name": "Clean Typography C",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4512,
+        768
+      ],
+      "notes": "Bo em dash / en dash. Giu hyphen tu ghep."
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Marketing plan",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1827161699,
+          "mode": "list",
+          "cachedResultName": "KEY WORD SEO",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1827161699"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $json.body.row_number }}",
+            "status": "Processing"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "KW_ID",
+              "displayName": "KW_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Pillar Topic",
+              "displayName": "Pillar Topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Seed",
+              "displayName": "Seed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Geolocation",
+              "displayName": "Geolocation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Tavily",
+              "displayName": "Tavily",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Search Intent",
+              "displayName": "Search Intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Buyer",
+              "displayName": "Buyer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "primary",
+              "displayName": "primary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "secondary",
+              "displayName": "secondary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Meta",
+              "displayName": "Meta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "link",
+              "displayName": "link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        0,
+        512
+      ],
+      "id": "d749da6a-177a-45e9-b44b-67f646111c97",
+      "name": "Update row in sheet3"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "00000000-0000-0000-0000-000000000000",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -256,
+        512
+      ],
+      "id": "82071004-b826-4847-b43e-3e08290a9d11",
+      "name": "Webhook1",
+      "webhookId": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "connections": {
+    "Search": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript5": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Normalize Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "AI Agent Meta",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent2": {
+      "main": [
+        [
+          {
+            "node": "AI Agent Rewrite",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser2": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript7": {
+      "main": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent Meta": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser3": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent Meta",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript8": {
+      "main": [
+        [
+          {
+            "node": "Create HTML file in Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create HTML file in Drive": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent Rewrite": {
+      "main": [
+        [
+          {
+            "node": "Clean Typography",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Markdown to HTML": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model Writer": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "AI Agent Rewrite",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format USDA Nutrition": {
+      "main": [
+        [
+          {
+            "node": "Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Intent": {
+      "main": [
+        [
+          {
+            "node": "Route by Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Intent": {
+      "main": [
+        [
+          {
+            "node": "USDA Resolver",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep Commercial",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip - Other Intents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "USDA Resolver": {
+      "main": [
+        [
+          {
+            "node": "Need USDA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Resolver Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "USDA Resolver",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "usda_search": {
+      "ai_tool": [
+        [
+          {
+            "node": "USDA Resolver",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "USDA Resolver Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "USDA Resolver",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Need USDA": {
+      "main": [
+        [
+          {
+            "node": "USDA Fetch by ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No USDA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "USDA Fetch by ID": {
+      "main": [
+        [
+          {
+            "node": "Format USDA Nutrition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No USDA": {
+      "main": [
+        [
+          {
+            "node": "Format USDA Nutrition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Commercial": {
+      "main": [
+        [
+          {
+            "node": "Search Planner C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Sources C": {
+      "main": [
+        [
+          {
+            "node": "Outline C",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Facts C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model C Cheap": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Outline C",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Facts C",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Meta C",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Search Planner C",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outline C": {
+      "main": [
+        [
+          {
+            "node": "Merge Brief C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outline C Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Outline C",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Facts C": {
+      "main": [
+        [
+          {
+            "node": "Merge Brief C",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Facts C Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Facts C",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Brief C": {
+      "main": [
+        [
+          {
+            "node": "Code Brief C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Brief C": {
+      "main": [
+        [
+          {
+            "node": "Writer C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model C Writer": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Writer C",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Rewrite C",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Writer C": {
+      "main": [
+        [
+          {
+            "node": "Rewrite C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rewrite C": {
+      "main": [
+        [
+          {
+            "node": "Clean Typography C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MD to HTML C": {
+      "main": [
+        [
+          {
+            "node": "Merge Output C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta C": {
+      "main": [
+        [
+          {
+            "node": "Merge Output C",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Meta C Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Meta C",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Output C": {
+      "main": [
+        [
+          {
+            "node": "Assemble C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble C": {
+      "main": [
+        [
+          {
+            "node": "Create HTML C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create HTML C": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Planner C": {
+      "main": [
+        [
+          {
+            "node": "Expand Queries C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Planner Parser C": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Search Planner C",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Queries C": {
+      "main": [
+        [
+          {
+            "node": "Search Web C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Web C": {
+      "main": [
+        [
+          {
+            "node": "Code Sources C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Typography": {
+      "main": [
+        [
+          {
+            "node": "Markdown to HTML",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AI Agent Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Typography C": {
+      "main": [
+        [
+          {
+            "node": "MD to HTML C",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Meta C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet3": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  }
+}

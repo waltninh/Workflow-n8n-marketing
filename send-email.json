@@ -1,0 +1,551 @@
+{
+  "name": "send email",
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "={{ $json['images in email'] }}",
+            "mode": "url"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -48,
+        -128
+      ],
+      "id": "e402ee92-c29b-4538-a278-4fc22641bce3",
+      "name": "Search files and folders"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === LẤY DATA ===\nconst sheetData = $('get imformation post1').first().json;\n \n// Public URL ảnh từ Google Drive\nconst img0 = items[0]?.json?.publicImageUrl || '';\nconst img1 = items[1]?.json?.publicImageUrl || '';\nconst img2 = items[2]?.json?.publicImageUrl || '';\n \n// === HÀM ESCAPE HTML (chỉ làm sạch ký tự đặc biệt) ===\nfunction escapeHtml(str) {\n  if (!str) return '';\n  return String(str)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n \n// === ĐOẠN VĂN: tách theo DÒNG TRỐNG thành từng <p> -> khoảng cách gọn, đều nhau ===\n// - dòng trống giữa các khối: KHÔNG còn tạo khoảng cách lớn, chỉ còn margin 15px\n// - xuống dòng đơn trong cùng 1 khối (vd \"Best regards,\\nTMICORP.\"): vẫn giữ bằng <br>\nfunction formatParagraph(str, style) {\n  if (!str) return '';\n  return String(str)\n    .replace(/\\r\\n/g, '\\n')          // chuẩn hoá xuống dòng\n    .split(/\\n\\s*\\n+/)               // tách theo dòng trống (1 hoặc nhiều dòng trống)\n    .map(function (block) {\n      return '<p style=\"' + style + '\">' +\n        escapeHtml(block).replace(/\\n/g, '<br>') +\n        '</p>';\n    })\n    .join('');\n}\n \n// === STYLE DÙNG CHUNG CHO ĐOẠN VĂN ===\nconst pStyle = 'font-size:15px; color:#3a4a5c; line-height:1.7; margin:0 0 15px; text-align:justify;';\n \n// === TEXT TỪ SHEET (đã tự bọc <p>, KHÔNG bọc <p> bên ngoài nữa) ===\nconst text1 = formatParagraph(sheetData['paragraph1'], pStyle);\nconst text2 = formatParagraph(sheetData['paragraph2'], pStyle);\nconst text3 = formatParagraph(sheetData['paragraph3'], pStyle);\nconst subjectEmail = sheetData['subject email'] || 'TMICORP - Vietnam Agricultural Export';\n \n// === LINK CỐ ĐỊNH ===\nconst websiteUrl = 'https://tmicorpgroup.com/';\nconst catalogUrl = 'https://drive.google.com/file/d/YOUR_GOOGLE_FILE_ID/view?usp=drive_link';\nconst toEmail = 'your-email@example.com';\n \n// === HTML EMAIL ===\nconst html =\n'<!DOCTYPE html>' +\n'<html>' +\n'<head>' +\n'<meta charset=\"UTF-8\">' +\n'<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">' +\n'<title>TMICORP</title>' +\n'</head>' +\n'<body style=\"margin:0; padding:0; background:#eef2f7; font-family:Arial,Helvetica,sans-serif;\">' +\n'<div style=\"background:#eef2f7; padding:32px 0;\">' +\n'<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr><td align=\"center\">' +\n'<table width=\"600\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"background:#ffffff; border-top:4px solid #ff914d;\">' +\n \n// HEADER (thu nhỏ, chữ to hơn 1 chút)\n'<tr><td style=\"background:#183d69; padding:7px 40px;\">' +\n  '<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr>' +\n    '<td style=\"vertical-align:middle;\">' +\n      '<p style=\"color:#ffffff; font-size:13px; font-weight:bold; margin:0; letter-spacing:1.5px;\">TMICORP</p>' +\n      '<p style=\"color:#a8c5e0; font-size:7px; margin:2px 0 0; letter-spacing:2px; text-transform:uppercase;\">Vietnam Agricultural Processed Products</p>' +\n    '</td>' +\n    '<td style=\"vertical-align:middle; text-align:right;\">' +\n      '<p style=\"color:#ff914d; font-size:7px; margin:0; letter-spacing:1px; text-transform:uppercase; font-weight:bold;\">Premium Quality</p>' +\n    '</td>' +\n  '</tr></table>' +\n'</td></tr>' +\n \n// BANNER ẢNH 1\n'<tr><td>' +\n  '<a href=\"' + websiteUrl + '\" target=\"_blank\" style=\"text-decoration:none;\">' +\n    '<img src=\"' + img0 + '\" width=\"600\" style=\"display:block; width:100%; border:0;\" alt=\"TMICORP Banner\">' +\n  '</a>' +\n'</td></tr>' +\n \n// ACCENT BAR\n'<tr><td style=\"background:#ff914d; height:3px; line-height:3px; font-size:0;\">&nbsp;</td></tr>' +\n \n// GREETING + ĐOẠN 1\n'<tr><td style=\"padding:24px 40px 0 40px;\">' +\n  '<p style=\"font-size:15px; font-weight:bold; font-style:italic; color:#183d69; margin:0 0 12px;\">Dear Sir/Madam,</p>' +\n  text1 +\n'</td></tr>' +\n \n// ẢNH 2\n'<tr><td style=\"padding:0 40px 15px;\">' +\n  '<a href=\"' + websiteUrl + '\" target=\"_blank\" style=\"text-decoration:none;\">' +\n    '<img src=\"' + img1 + '\" width=\"520\" style=\"display:block; width:100%; border:0;\" alt=\"Product 1\">' +\n  '</a>' +\n'</td></tr>' +\n \n// ĐOẠN 2\n'<tr><td style=\"padding:0 40px;\">' +\n  text2 +\n'</td></tr>' +\n \n// ẢNH 3\n'<tr><td style=\"padding:0 40px 15px;\">' +\n  '<a href=\"' + websiteUrl + '\" target=\"_blank\" style=\"text-decoration:none;\">' +\n    '<img src=\"' + img2 + '\" width=\"520\" style=\"display:block; width:100%; border:0;\" alt=\"Product 2\">' +\n  '</a>' +\n'</td></tr>' +\n \n// ĐOẠN 3\n'<tr><td style=\"padding:0 40px;\">' +\n  text3 +\n'</td></tr>' +\n \n// CTA BUTTON\n'<tr><td style=\"text-align:center; padding:6px 40px 22px;\">' +\n  '<a href=\"' + catalogUrl + '\" target=\"_blank\" style=\"display:inline-block; background:#ff914d; color:#ffffff; font-size:15px; font-weight:bold; padding:14px 44px; border-radius:7px; text-decoration:none; letter-spacing:0.5px;\">View our catalogue &rarr;</a>' +\n'</td></tr>' +\n \n// DIVIDER\n'<tr><td style=\"padding:0 40px;\"><hr style=\"border:none; border-top:1px solid #eee; margin:0;\"></td></tr>' +\n \n// FOOTER\n'<tr><td style=\"padding:20px 40px; text-align:center;\">' +\n  '<p style=\"font-size:12px; color:#aaa; margin:0 0 4px;\">&copy; 2026 TMICORP &mdash; Vietnam Agricultural Processed Products</p>' +\n  '<p style=\"font-size:12px; color:#aaa; margin:0;\">' +\n    '<a href=\"#\" style=\"color:#aaa; text-decoration:underline;\">Unsubscribe</a>' +\n    ' &nbsp;|&nbsp; ' +\n    '<a href=\"' + websiteUrl + '\" style=\"color:#000000; text-decoration:underline; font-weight:bold;\">Visit Website</a>' +\n  '</p>' +\n'</td></tr>' +\n \n'</table>' +\n'</td></tr></table>' +\n'</div>' +\n'</body>' +\n'</html>';\n \nreturn [{\n  json: {\n    htmlBody: html,\n    subject: subjectEmail,\n    toEmail: toEmail\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        -128
+      ],
+      "id": "469ca1c6-2b6d-493e-b9f9-7b088c14ca0d",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "sendTo": "your-email@example.com",
+        "subject": "={{ $('get imformation post1').item.json['subject email'] }}",
+        "message": "={{ $json.htmlBody }}",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "={{ $json.attachmentFields }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1296,
+        -224
+      ],
+      "id": "64b04be6-d5e5-442b-8f17-55326fd12709",
+      "name": "Send a message",
+      "webhookId": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tạo link ảnh nhẹ để nhúng vào email.\n// Dùng endpoint thumbnail của Google Drive: Google tự resize + nén sẵn,\n// nên người nhận không phải tải file gốc (có thể vài MB mỗi ảnh).\n// sz=w1200 -> chiều rộng tối đa 1200px, đủ nét cho ảnh hiển thị 520-600px trong email.\n// Muốn nhẹ hơn nữa thì hạ xuống w800; muốn nét hơn thì tăng lên w1600.\n\nconst WIDTH = 1200;\n\nreturn items.map(item => ({\n  json: {\n    ...item.json,\n    publicImageUrl: `https://drive.google.com/thumbnail?id=${item.json.id}&sz=w${WIDTH}`,\n    originalImageUrl: `https://drive.google.com/uc?export=view&id=${item.json.id}`\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        -128
+      ],
+      "id": "34ca09be-5132-43b6-9edc-71e0eedce559",
+      "name": "code create link export=view"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {
+          "binaryPropertyName": "data"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        624,
+        -320
+      ],
+      "id": "7da7a10c-1dcc-49ae-a2f2-dc7d6506f7b8",
+      "name": "Download file"
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "queryString": "=",
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "={{ $json.attachments }}",
+            "mode": "url"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        400,
+        -320
+      ],
+      "id": "04c15ea0-e096-490d-8097-890e17103176",
+      "name": "Search files and folders1"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1072,
+        -224
+      ],
+      "id": "f2650216-ebd9-4579-9e84-ec99ada6d58e",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gom N ảnh binary (1-10) thành 1 item duy nhất\n// Tên field: attachment_1, attachment_2, ..., attachment_N\nconst binary = {};\n\nitems.forEach((item, index) => {\n  if (item.binary?.data) {\n    binary[`attachment_${index + 1}`] = item.binary.data;\n  }\n});\n\n// Tạo chuỗi tên các field, phân tách bằng dấu phẩy\n// Ví dụ: \"attachment_1,attachment_2,attachment_3\"\nconst attachmentFields = Object.keys(binary).join(',');\n\nreturn [{\n  json: {\n    ready: true,\n    attachmentCount: Object.keys(binary).length,\n    attachmentFields: attachmentFields  // ← QUAN TRỌNG: dùng cho Gmail node\n  },\n  binary: binary\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        -320
+      ],
+      "id": "32c1a1cf-f924-4c81-94db-c5a7340079f1",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "maxItems": 3
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        176,
+        -128
+      ],
+      "id": "cc9e5c97-3b7f-4700-9b2b-a576857c593a",
+      "name": "Limit"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Marketing plan",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 617957491,
+          "mode": "list",
+          "cachedResultName": "Email",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=617957491"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "Send"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -272,
+        -224
+      ],
+      "id": "379b2ddc-cec4-457d-bc3a-85733768d2cb",
+      "name": "get imformation post1"
+    },
+    {
+      "parameters": {
+        "sortFieldsUi": {
+          "sortField": [
+            {
+              "fieldName": "name"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.sort",
+      "typeVersion": 1,
+      "position": [
+        400,
+        -128
+      ],
+      "id": "c2fec2f5-f8b0-4455-bf81-b7c5865f7b8c",
+      "name": "Sort1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Marketing plan",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 617957491,
+          "mode": "list",
+          "cachedResultName": "Email",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=617957491"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "Sent",
+            "row_number": "={{ $('get imformation post1').item.json.row_number }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "day",
+              "displayName": "day",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject email",
+              "displayName": "subject email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "paragraph1",
+              "displayName": "paragraph1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "paragraph2",
+              "displayName": "paragraph2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "paragraph3",
+              "displayName": "paragraph3",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "product images",
+              "displayName": "product images",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "prompt",
+              "displayName": "prompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "images in email",
+              "displayName": "images in email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "attachments",
+              "displayName": "attachments",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1520,
+        -224
+      ],
+      "id": "44ad9511-aa23-4023-a3b0-e925daddca58",
+      "name": "Update row in sheet"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sendemail",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -624,
+        -224
+      ],
+      "id": "bac60cc6-4fbe-4bd3-b940-515fa3ce765d",
+      "name": "Webhook1",
+      "webhookId": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        -384
+      ],
+      "id": "d175b124-cd27-43bf-84d2-c26c59abc968",
+      "name": "When clicking ‘Execute workflow’"
+    }
+  ],
+  "connections": {
+    "Search files and folders": {
+      "main": [
+        [
+          {
+            "node": "Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "code create link export=view": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search files and folders1": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit": {
+      "main": [
+        [
+          {
+            "node": "Sort1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get imformation post1": {
+      "main": [
+        [
+          {
+            "node": "Search files and folders1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Search files and folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sort1": {
+      "main": [
+        [
+          {
+            "node": "code create link export=view",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "get imformation post1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "get imformation post1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  }
+}

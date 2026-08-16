@@ -1,0 +1,875 @@
+{
+  "name": "TOPIC",
+  "nodes": [
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Marketing plan",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1827161699,
+          "mode": "list",
+          "cachedResultName": "KEY WORD SEO",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1827161699"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "Processing"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        208,
+        80
+      ],
+      "id": "c2cc75e7-6960-4e6b-a124-7a1717ec36e4",
+      "name": "Get row(s) in sheet"
+    },
+    {
+      "parameters": {
+        "url": "https://suggestqueries.google.com/complete/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "client",
+              "value": "firefox"
+            },
+            {
+              "name": "hl",
+              "value": "={{ $json.hl }}"
+            },
+            {
+              "name": "gl",
+              "value": "={{ $json.gl }}"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.query }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "*/*"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 400
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        656,
+        80
+      ],
+      "id": "346773cf-c9b1-4bf5-862a-e7669bc5b0bd",
+      "name": "HTTP Request",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');\nconst digits  = '0123456789'.split('');\n\n// Modifier thương mại / B2B — chạy CẢ HAI chiều\n// (\"wholesale frozen avocado\" và \"frozen avocado wholesale\" đều tự nhiên)\nconst b2b = ['supplier','manufacturer','exporter','wholesale','bulk',\n  'oem','odm','private label','moq','factory','price','fob',\n  'distributor','importer','in brine','in syrup','certification',\n  'hs code','from vietnam','bulk order'];\n\n// Từ mở đầu câu hỏi — CHỈ đứng TRƯỚC seed\n// (\"is frozen avocado healthy\" hợp lý, \"frozen avocado is\" thì không)\nconst b2cPrefix = ['is','are','can you','can i','how to','how do you',\n  'what is','what are','why','when','where','which','does','do','should',\n  'how long','how much','how many','best','top','benefits of','who'];\n\n// Thuộc tính & giới từ — CHỈ đứng SAU seed\n// (\"frozen avocado recipe\" hợp lý, \"recipe frozen avocado\" thì không)\nconst b2cSuffix = ['recipe','recipes','calories','nutrition','benefits',\n  'healthy','vs','substitute','alternative','review','for','with',\n  'without','and','like','near me','brand','taste','storage','uses',\n  'ideas','types','size','organic'];\n\nconst out = [];\n\nfor (const row of $input.all()) {\n  // chuẩn hóa toàn bộ tên cột về chữ thường\n  const r = {};\n  for (const [k, val] of Object.entries(row.json)) {\n    r[String(k).trim().toLowerCase()] = val;\n  }\n\n  // LƯU Ý: phải đọc bằng key chữ thường, khớp với bước chuẩn hóa ở trên\n  const seed = String(r['seed'] || '').toLowerCase().trim();\n  if (!seed) continue;\n\n  // đọc geolocation từ sheet: \"us\" hoặc \"us, de, ae\"\n  const markets = String(r['geolocation'] || 'us')\n    .split(/[,;/|]/)\n    .map(x => x.trim().toLowerCase())\n    .filter(x => /^[a-z]{2}$/.test(x));\n\n  if (markets.length === 0) markets.push('us');\n\n  for (const gl of markets) {\n    const v = new Map();\n\n    // alphabet soup: a-z, thêm 0-9 để bắt biến thể khối lượng/quy cách\n    // (vd \"frozen avocado 1kg\", \"frozen avocado 500g\")\n    letters.forEach(l => v.set(`${seed} ${l}`, 'discovery'));\n    digits.forEach(d  => v.set(`${seed} ${d}`, 'discovery'));\n\n    b2cPrefix.forEach(k => v.set(`${k} ${seed}`, 'B2C'));\n    b2cSuffix.forEach(k => v.set(`${seed} ${k}`, 'B2C'));\n\n    // set b2b sau cùng: nếu trùng key với b2c thì nhãn B2B thắng\n    b2b.forEach(k => {\n      v.set(`${seed} ${k}`, 'B2B');\n      v.set(`${k} ${seed}`, 'B2B');\n    });\n\n    ['vietnam','supplier','price'].forEach(k =>\n      v.set(`${seed} * ${k}`, 'B2B'));\n\n    for (const [q, line] of v) {\n      out.push({ json: {\n        kw_id:  r['kw_id'] || '',\n        pillar: r['pillar topic'] || r['seed'] || '',\n        seed,\n        query:  q,\n        line,\n        gl,\n        hl: 'en',\n      }});\n    }\n  }\n}\n\nif (out.length === 0) {\n  throw new Error('Không sinh được query nào — kiểm tra cột \"Seed\" và \"Geolocation\" trong sheet (Seed không được để trống)');\n}\n\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        80
+      ],
+      "id": "f68f9666-da60-48f6-9a8c-097cb2059ee5",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "// tra ngược metadata từ node sinh query\nconst meta = new Map();\nfor (const it of $('Code in JavaScript').all()) {\n  meta.set(it.json.query, it.json);\n}\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const raw = item.json.data;\n  if (!raw) continue;\n\n  let parsed;\n  try { parsed = JSON.parse(raw); } catch { continue; }\n\n  const srcQuery = parsed[0];\n  const suggestions = parsed[1] || [];\n  const m = meta.get(srcQuery) || {};\n\n  suggestions.forEach((s, i) => {\n    const kw = String(s).toLowerCase().trim();\n    if (!kw) return;\n\n    out.push({ json: {\n      keyword:      kw,\n      word_count:   kw.split(/\\s+/).length,\n      position:     i + 1,\n      source_query: srcQuery,\n      line:         m.line   || '',\n      gl:           m.gl     || '',\n      kw_id:        m.kw_id  || '',\n      pillar:       m.pillar || '',\n      seed:         m.seed   || '',\n    }});\n  });\n}\n\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        80
+      ],
+      "id": "92179cd1-de16-4666-af3c-abdedbc243de",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const map = new Map();\n\nfor (const item of $input.all()) {\n  const kw = String(item.json.keyword || '').trim();\n  if (kw.length < 4) continue;\n\n  const pos = Number(item.json.position) || 0;\n\n  if (map.has(kw)) {\n    const e = map.get(kw);\n    e.hit_count += 1;      // đếm số lần trùng\n    e.pos_sum   += pos;    // cộng dồn vị trí để tính trung bình\n    continue;\n  }\n\n  map.set(kw, {\n    keyword:    kw,\n    hit_count:  1,\n    pos_sum:    pos,\n    word_count: kw.split(/\\s+/).length,\n  });\n}\n\nconst rows = [...map.values()].map(e => {\n  const avg = Math.round((e.pos_sum / e.hit_count) * 10) / 10;  // vị trí trung bình\n  return {\n    keyword:     e.keyword,\n    pos_display: `${avg}-${e.hit_count}`,   // \"trung bình - số lần\", vd 1.2-8\n    word_count:  e.word_count,\n  };\n});\n\n// từ nào xuất hiện nhiều lần hơn thì lên trên\nrows.sort((a, b) =>\n  Number(b.pos_display.split('-')[1]) - Number(a.pos_display.split('-')[1])\n);\n\nreturn rows.map(json => ({ json }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        80
+      ],
+      "id": "0b2ee46f-eca7-4b0f-999c-3ce920f00607",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gom tất cả từ khóa thành 1 khối text duy nhất để đưa vào AI Agent\n\nconst rows = $input.all().map(i => i.json);\n\nif (rows.length === 0) {\n  throw new Error('Không có từ khóa nào ở input');\n}\n\n// Nếu item có field \"keyword\" (từ Code in JavaScript4) thì dùng nó,\n// nếu không có thì thử field \"keywords\" (đã gộp sẵn) hoặc fallback\nconst list = rows.map((r, i) => {\n  const kw = r.keyword || r.keywords || '';\n  return `${i + 1}. ${kw}`;\n}).join('\\n');\n\nreturn [{\n  json: {\n    total: rows.length,\n    list: list,       // dùng field này trong Prompt: {{ $json.list }}\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        80
+      ],
+      "id": "ab216a00-dd3d-4527-b4c1-de50ca6a1139",
+      "name": "Code in JavaScript6"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=product :{{ $('Code in JavaScript1').first().json.seed }}\nname:{{ $json.list }}",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1920,
+        80
+      ],
+      "id": "3cd4efce-7782-4f89-a6fa-f3bb9a43be29",
+      "name": "AI Agent3"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-5-mini",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1888,
+        384
+      ],
+      "id": "6c7be8b7-4ff6-4524-bada-1c3b7f4103e6",
+      "name": "OpenRouter Chat Model1"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"clusters\": [\n    {\n      \"topic\": \"canned pineapple dessert recipes\",\n      \"keywords\": [\n        \"canned pineapple dessert recipes\",\n        \"canned pineapple upside down cake recipe\",\n        \"canned pineapple ice cream recipe\"\n      ]\n    },\n    {\n      \"topic\": \"canned pineapple suppliers and pricing\",\n      \"keywords\": [\n        \"canned pineapple price\",\n        \"canned pineapple suppliers\",\n        \"canned pineapple wholesale\"\n      ]\n    }\n  ]\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2528,
+        384
+      ],
+      "id": "aaee11a7-8516-47e6-b470-ab553121af29",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.list }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a senior SEO editor for TMICORP — a Vietnamese manufacturer and \nexporter of processed agricultural products (canned, dried, frozen, \npickled, sauces, spices). \nProduct being reviewed: {{ $json.product }}\n\nYou are given {{ $json.total_clusters }} keyword clusters \n({{ $json.total_keywords }} keywords total), already grouped by a \nprevious filtering pass:\n\n{{ $json.list }}\n\nThis is a QUALITY CONTROL pass. The previous pass may have missed some \nkeywords that should have been discarded. Review every cluster and every \nkeyword carefully.\n\nSTEP 1 — RE-CHECK AND DISCARD\nRemove any keyword that is still present but should NOT be there:\n- Names of retail chains / marketplaces (Walmart, Costco, Tesco, Aldi, \n  Kroger, Amazon, Target, Publix, Safeway, Asda, Morrisons, Coles, \n  Woolworths, Lidl, Trader Joe's, Dollar General, Kaufland, Taobao, \n  or any other named retailer/store)\n- Keywords targeting markets outside the intended scope (Pakistan, \n  India, Kenya, Bangladesh, Nigeria, Sri Lanka, Ghana, Nepal, or any \n  other out-of-scope country)\n- Nonsensical, joke, or novelty queries not usable for product SEO \n  (e.g. \"can pineapple eat you\", references to bands, movies, games, \n  clothing brands, or any pop-culture/novelty topic)\n- Keywords unrelated to the processed agricultural / food industry\n- Any keyword that is an exact or near-exact duplicate of another \n  keyword ANYWHERE in the full list (not just within the same cluster)\n\nDiscarded keywords must be silently dropped. Do NOT create a \n\"miscellaneous\", \"other\", or catch-all cluster to hold them. If removing \nkeywords leaves a cluster with fewer than 2 keywords, merge it into the \nclosest matching cluster instead of keeping a near-empty one.\n\nSTEP 2 — CLEAN UP CLUSTERS\n- If two clusters actually share the same search intent, merge them \n  into one and pick the clearer topic name.\n- Do not change a cluster's topic name unless it improves clarity.\n- Do not invent new keywords. Only reorganize what is already given.\n\nOUTPUT\nReturn the cleaned result as JSON only, no text outside the JSON, in \nthis exact structure:\n\n{\n  \"clusters\": [\n    {\n      \"topic\": \"short topic name, under 8 words\",\n      \"keywords\": [\"keyword1\", \"keyword2\", ...]\n    }\n  ]\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2496,
+        80
+      ],
+      "id": "38e097b2-53b2-40e4-9c8e-0a8ca5586f02",
+      "name": "AI Agent4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst data = input.output ?? input;\n\nconst clusters = data.clusters || [];\n\nif (clusters.length === 0) {\n  throw new Error('Không có cluster nào từ AI Agent3');\n}\n\nlet lines = [];\nlet totalKeywords = 0;\n\nfor (const c of clusters) {\n  const topic = c.topic || '(no topic)';\n  const kws = c.keywords || [];\n  totalKeywords += kws.length;\n\n  lines.push(`### ${topic}`);\n  kws.forEach(k => lines.push(k));\n  lines.push('');\n}\n\nreturn [{\n  json: {\n    total_clusters: clusters.length,\n    total_keywords: totalKeywords,\n    list: lines.join('\\n'),\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2272,
+        80
+      ],
+      "id": "93c070d2-0407-46bb-9a22-62af17b60007",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Marketing plan",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 479977849,
+          "mode": "list",
+          "cachedResultName": "Topic",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=479977849"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Topic": "={{ $json.topic }}",
+            "List_keyword": "={{ $json.keywords }}",
+            "Pillar Topic": "=\n{{ $('Get row(s) in sheet').first().json['Pillar Topic'] }}",
+            "Seed": "={{ $('Get row(s) in sheet').first().json.Seed }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Topic",
+              "displayName": "Topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "List_keyword",
+              "displayName": "List_keyword",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Pillar Topic",
+              "displayName": "Pillar Topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Seed",
+              "displayName": "Seed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3200,
+        80
+      ],
+      "id": "355b2040-68a9-4264-bdb9-7e3e842cb7ef",
+      "name": "Append row in sheet"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tách mỗi cluster thành 1 item riêng để append vào Google Sheet\n\nconst input = $input.first().json;\nconst data = input.output ?? input;\n\nconst clusters = data.clusters || [];\n\nif (clusters.length === 0) {\n  throw new Error('Không có cluster nào ở input');\n}\n\nreturn clusters.map((c, i) => ({\n  json: {\n    group_id: `G${String(i + 1).padStart(2, '0')}`,\n    topic: c.topic || '',\n    keyword_count: (c.keywords || []).length,\n    keywords: (c.keywords || []).join('\\n'),   // xuống dòng trong 1 ô Sheet\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2912,
+        80
+      ],
+      "id": "75a228d3-617c-41d6-8859-d400ad3927ef",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "00000000-0000-0000-0000-000000000000",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -176,
+        80
+      ],
+      "id": "094a984a-0e18-4b90-bf89-78c408849656",
+      "name": "Webhook",
+      "webhookId": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Marketing plan",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1827161699,
+          "mode": "list",
+          "cachedResultName": "KEY WORD SEO",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1827161699"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Get row(s) in sheet').first().json.row_number }}",
+            "status": "Finished"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "KW_ID",
+              "displayName": "KW_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pillar Topic",
+              "displayName": "Pillar Topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Seed",
+              "displayName": "Seed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Geolocation",
+              "displayName": "Geolocation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Tavily",
+              "displayName": "Tavily",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Search Intent",
+              "displayName": "Search Intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Buyer",
+              "displayName": "Buyer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "primary",
+              "displayName": "primary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "secondary",
+              "displayName": "secondary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Meta",
+              "displayName": "Meta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "link",
+              "displayName": "link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3408,
+        80
+      ],
+      "id": "5b19e566-e189-47a6-a152-8c77bef85f6e",
+      "name": "Update row in sheet1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Marketing plan",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1827161699,
+          "mode": "list",
+          "cachedResultName": "KEY WORD SEO",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1827161699"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $json.body.row_number }}",
+            "status": "Processing"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "KW_ID",
+              "displayName": "KW_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Pillar Topic",
+              "displayName": "Pillar Topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Seed",
+              "displayName": "Seed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Geolocation",
+              "displayName": "Geolocation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Tavily",
+              "displayName": "Tavily",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Search Intent",
+              "displayName": "Search Intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Buyer",
+              "displayName": "Buyer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "primary",
+              "displayName": "primary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "secondary",
+              "displayName": "secondary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Meta",
+              "displayName": "Meta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "link",
+              "displayName": "link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        16,
+        80
+      ],
+      "id": "c1ce38f2-443c-40e9-83eb-fe221ed69c06",
+      "name": "Update row in sheet4"
+    }
+  ],
+  "connections": {
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript6": {
+      "main": [
+        [
+          {
+            "node": "AI Agent3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent3",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "AI Agent4",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent3",
+            "type": "ai_outputParser",
+            "index": 0
+          },
+          {
+            "node": "AI Agent4",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent4": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "AI Agent4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet4": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}
