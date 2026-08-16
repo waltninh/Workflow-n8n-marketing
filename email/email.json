@@ -481,7 +481,7 @@
     {
       "parameters": {
         "operation": "sendPhoto",
-        "chatId": "8662190485",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "binaryData": true,
         "additionalFields": {}
       },
@@ -498,7 +498,7 @@
     {
       "parameters": {
         "operation": "sendAndWait",
-        "chatId": "8662190485",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "message": "Cậu chủ duyệt ảnh cho em ạ !",
         "responseType": "freeText",
         "options": {}
@@ -1284,7 +1284,7 @@
     {
       "parameters": {
         "operation": "sendAndWait",
-        "chatId": "8662190485",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "message": "=📝 Sửa nội dung [{{ $json.field }}]:\n\n{{ $json.value }}\n\n➡️ Reply text mới để sửa, hoặc '.', 'ok', 'OK', 'skip' để giữ nguyên.",
         "responseType": "freeText",
         "options": {
@@ -1708,7 +1708,7 @@
     {
       "parameters": {
         "operation": "sendAndWait",
-        "chatId": "8662190485",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "message": "={{ $json.output }}",
         "responseType": "freeText",
         "options": {}
@@ -1743,7 +1743,7 @@
     {
       "parameters": {
         "operation": "sendAndWait",
-        "chatId": "8662190485",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "message": "={{ $json.output }}",
         "responseType": "freeText",
         "options": {}
@@ -2117,7 +2117,7 @@
     {
       "parameters": {
         "operation": "sendAndWait",
-        "chatId": "8662190485",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "message": "={{ $json.output }}",
         "responseType": "freeText",
         "options": {}
@@ -2178,7 +2178,7 @@
     {
       "parameters": {
         "operation": "sendAndWait",
-        "chatId": "8662190485",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "message": "=📝 Sửa nội dung [{{ $json.field }}]:\n\n{{ $json.value }}\n\n➡️ Reply text mới để sửa, hoặc '.', 'ok', 'OK', 'skip' để giữ nguyên.",
         "responseType": "freeText",
         "options": {

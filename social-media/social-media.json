@@ -255,7 +255,7 @@
       "parameters": {
         "httpRequestMethod": "POST",
         "graphApiVersion": "v22.0",
-        "node": "61554209057298",
+        "node": "YOUR_FACEBOOK_PAGE_ID",
         "edge": "photos",
         "sendBinaryData": true,
         "binaryPropertyName": "file:data",
@@ -472,7 +472,7 @@
     {
       "parameters": {
         "operation": "sendPhoto",
-        "chatId": "8662190485",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "binaryData": true,
         "additionalFields": {}
       },
@@ -489,7 +489,7 @@
     {
       "parameters": {
         "operation": "sendAndWait",
-        "chatId": "8662190485",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "message": "Con vợ duyệt ảnh cho anh với !",
         "responseType": "freeText",
         "options": {}
@@ -550,7 +550,7 @@
     {
       "parameters": {
         "operation": "sendAndWait",
-        "chatId": "8662190485",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "message": "={{ $json.output }}",
         "responseType": "freeText",
         "options": {}
@@ -1364,7 +1364,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://graph.instagram.com/v21.0/17841450757722264/media",
+        "url": "https://graph.instagram.com/v21.0/YOUR_INSTAGRAM_ACCOUNT_ID/media",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
@@ -1396,7 +1396,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://graph.instagram.com/v21.0/17841450757722264/media_publish",
+        "url": "https://graph.instagram.com/v21.0/YOUR_INSTAGRAM_ACCOUNT_ID/media_publish",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
@@ -1460,7 +1460,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\n  \"registerUploadRequest\": {\n    \"owner\": \"urn:li:person:agqvuCYbZQ\",\n    \"recipes\": [\n      \"urn:li:digitalmediaRecipe:feedshare-image\"\n    ],\n    \"serviceRelationships\": [\n      {\n        \"relationshipType\": \"OWNER\",\n        \"identifier\": \"urn:li:userGeneratedContent\"\n      }\n    ],\n    \"supportedUploadMechanism\": [\n      \"SYNCHRONOUS_UPLOAD\"\n    ]\n  }\n}",
+        "jsonBody": "{\n  \"registerUploadRequest\": {\n    \"owner\": \"urn:li:person:YOUR_LINKEDIN_PERSON_ID\",\n    \"recipes\": [\n      \"urn:li:digitalmediaRecipe:feedshare-image\"\n    ],\n    \"serviceRelationships\": [\n      {\n        \"relationshipType\": \"OWNER\",\n        \"identifier\": \"urn:li:userGeneratedContent\"\n      }\n    ],\n    \"supportedUploadMechanism\": [\n      \"SYNCHRONOUS_UPLOAD\"\n    ]\n  }\n}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -1553,7 +1553,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const content = $('Get row(s) in sheet1').first().json.content;\nconst asset = $('HTTP Request12').first().json.value.asset;\n\nconst body = {\n  author: \"urn:li:person:agqvuCYbZQ\",\n  lifecycleState: \"PUBLISHED\",\n  specificContent: {\n    \"com.linkedin.ugc.ShareContent\": {\n      shareCommentary: {\n        text: content\n      },\n      shareMediaCategory: \"IMAGE\",\n      media: [\n        {\n          status: \"READY\",\n          media: asset\n        }\n      ]\n    }\n  },\n  visibility: {\n    \"com.linkedin.ugc.MemberNetworkVisibility\": \"PUBLIC\"\n  }\n};\n\nreturn [{ json: { body: JSON.stringify(body) } }];"
+        "jsCode": "const content = $('Get row(s) in sheet1').first().json.content;\nconst asset = $('HTTP Request12').first().json.value.asset;\n\nconst body = {\n  author: \"urn:li:person:YOUR_LINKEDIN_PERSON_ID\",\n  lifecycleState: \"PUBLISHED\",\n  specificContent: {\n    \"com.linkedin.ugc.ShareContent\": {\n      shareCommentary: {\n        text: content\n      },\n      shareMediaCategory: \"IMAGE\",\n      media: [\n        {\n          status: \"READY\",\n          media: asset\n        }\n      ]\n    }\n  },\n  visibility: {\n    \"com.linkedin.ugc.MemberNetworkVisibility\": \"PUBLIC\"\n  }\n};\n\nreturn [{ json: { body: JSON.stringify(body) } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -2027,7 +2027,7 @@
     {
       "parameters": {
         "operation": "sendAndWait",
-        "chatId": "8662190485",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "message": "={{ $json.output }}",
         "responseType": "freeText",
         "options": {}
@@ -2214,7 +2214,7 @@
       "parameters": {
         "httpRequestMethod": "POST",
         "graphApiVersion": "v22.0",
-        "node": "61554209057298",
+        "node": "YOUR_FACEBOOK_PAGE_ID",
         "edge": "photos",
         "sendBinaryData": true,
         "binaryPropertyName": "file:data",
@@ -2366,7 +2366,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://graph.instagram.com/v21.0/17841450757722264/media",
+        "url": "https://graph.instagram.com/v21.0/YOUR_INSTAGRAM_ACCOUNT_ID/media",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
@@ -2402,7 +2402,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://graph.instagram.com/v21.0/17841450757722264/media_publish",
+        "url": "https://graph.instagram.com/v21.0/YOUR_INSTAGRAM_ACCOUNT_ID/media_publish",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
@@ -2430,7 +2430,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://graph.instagram.com/v21.0/17841450757722264/media",
+        "url": "https://graph.instagram.com/v21.0/YOUR_INSTAGRAM_ACCOUNT_ID/media",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"image_url\": \"{{ $json.download_url }}\",\n  \"is_carousel_item\": true,\n  \"access_token\": \"IGAAZBkeV7acStBZAGF4RWg0MG9MMFVrZA09jNno3c2NoUmZAkTzdCYlE4MGFwSHJuS291cjF0dTd5WFk1MGRDX2xMYmVqWG9yTUhlUzFYSjFDOVUyVTlMc29DTHVKYk1WaGt0T3ZAjLXp1azRZAMkh0ODJYNjJwSExBbVpPakNLaWd3bwZDZD\"\n}",
@@ -2494,7 +2494,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\n  \"registerUploadRequest\": {\n    \"owner\": \"urn:li:person:agqvuCYbZQ\",\n    \"recipes\": [\n      \"urn:li:digitalmediaRecipe:feedshare-image\"\n    ],\n    \"serviceRelationships\": [\n      {\n        \"relationshipType\": \"OWNER\",\n        \"identifier\": \"urn:li:userGeneratedContent\"\n      }\n    ],\n    \"supportedUploadMechanism\": [\n      \"SYNCHRONOUS_UPLOAD\"\n    ]\n  }\n}",
+        "jsonBody": "{\n  \"registerUploadRequest\": {\n    \"owner\": \"urn:li:person:YOUR_LINKEDIN_PERSON_ID\",\n    \"recipes\": [\n      \"urn:li:digitalmediaRecipe:feedshare-image\"\n    ],\n    \"serviceRelationships\": [\n      {\n        \"relationshipType\": \"OWNER\",\n        \"identifier\": \"urn:li:userGeneratedContent\"\n      }\n    ],\n    \"supportedUploadMechanism\": [\n      \"SYNCHRONOUS_UPLOAD\"\n    ]\n  }\n}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -2536,7 +2536,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Noi dung bai viet lay tu Google Sheet\nconst content = $('Get row(s) in sheet').first().json.content;\n\n// Lay TAT CA asset URN tu node Register Upload (moi anh = 1 asset)\nconst assets = $('Register Upload').all();\n\n// Tao mang media nhieu anh, dung thu tu da sort\nconst media = assets.map(item => ({\n  status: \"READY\",\n  media: item.json.value.asset\n}));\n\nconst body = {\n  author: \"urn:li:person:agqvuCYbZQ\",\n  lifecycleState: \"PUBLISHED\",\n  specificContent: {\n    \"com.linkedin.ugc.ShareContent\": {\n      shareCommentary: { text: content },\n      shareMediaCategory: \"IMAGE\",\n      media: media\n    }\n  },\n  visibility: {\n    \"com.linkedin.ugc.MemberNetworkVisibility\": \"PUBLIC\"\n  }\n};\n\nreturn [{ json: { body: JSON.stringify(body) } }];"
+        "jsCode": "// Noi dung bai viet lay tu Google Sheet\nconst content = $('Get row(s) in sheet').first().json.content;\n\n// Lay TAT CA asset URN tu node Register Upload (moi anh = 1 asset)\nconst assets = $('Register Upload').all();\n\n// Tao mang media nhieu anh, dung thu tu da sort\nconst media = assets.map(item => ({\n  status: \"READY\",\n  media: item.json.value.asset\n}));\n\nconst body = {\n  author: \"urn:li:person:YOUR_LINKEDIN_PERSON_ID\",\n  lifecycleState: \"PUBLISHED\",\n  specificContent: {\n    \"com.linkedin.ugc.ShareContent\": {\n      shareCommentary: { text: content },\n      shareMediaCategory: \"IMAGE\",\n      media: media\n    }\n  },\n  visibility: {\n    \"com.linkedin.ugc.MemberNetworkVisibility\": \"PUBLIC\"\n  }\n};\n\nreturn [{ json: { body: JSON.stringify(body) } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

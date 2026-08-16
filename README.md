@@ -3,69 +3,49 @@
 Marketing automation workflows for TMICORP — a Vietnamese manufacturer and
 exporter of processed agricultural products.
 
-All credentials, API keys, Google document IDs, email addresses and webhook IDs
-have been replaced with placeholders before publishing. See
-[Configuration](#configuration).
+Five n8n workflows, grouped into three areas. Each folder has its own README
+explaining how those workflows run and what to configure.
 
-## Workflows
-
-| File | Name | Nodes | Purpose |
+| Folder | Workflows | Nodes | What it does |
 |---|---|---:|---|
-| [`send-email.json`](send-email.json) | send email | 14 | Reads a Google Sheet, builds an HTML email with images from Drive, sends it via Gmail, marks the row as sent |
-| [`topic.json`](topic.json) | TOPIC | 16 | Harvests keywords from Google Autosuggest, clusters them by search intent with an LLM, writes results back to the Sheet |
-| [`seo.json`](seo.json) | SEO | 58 | SEO content pipeline: research (Tavily, USDA FoodData), multiple AI agents, output to Sheets/Drive |
-| [`email.json`](email.json) | email | 80 | Extended email pipeline: image generation via kie.ai, branching by content type, Telegram notifications |
-| [`social-media.json`](social-media.json) | social media | 89 | Multi-channel publishing: Facebook Graph API, LinkedIn, Instagram; image generation via kie.ai; orchestrated through a Sheet |
+| [`seo/`](seo/) | `topic`, `seo` | 74 | Discovers and clusters keywords, then writes fact-checked articles and exports them as HTML |
+| [`email/`](email/) | `email`, `send-email` | 94 | Generates artwork, gets approval, and sends product emails through Gmail |
+| [`social-media/`](social-media/) | `social-media` | 89 | Publishes an approved post to Facebook, Instagram and LinkedIn |
 
-### External services used
+All five are orchestrated through one Google Sheet — the "Marketing plan"
+spreadsheet — where a `status` column acts as the work queue.
 
-Google Sheets · Google Drive · Gmail · Facebook Graph API · LinkedIn · Instagram
-Graph · Telegram · OpenRouter · Tavily · kie.ai · USDA FoodData Central ·
-Google Autosuggest
+| Tab | Used by | Columns |
+|---|---|---|
+| **KEY WORD SEO** | `seo/` | `KW_ID`, `Pillar Topic`, `Seed`, `Geolocation`, `Tavily`, `Search Intent`, `Buyer`, `Title`, `primary`, `secondary`, `Meta`, `link`, `status` |
+| **Topic** | `seo/` | `Topic`, `List_keyword`, `Pillar Topic`, `Seed` |
+| **Email** | `email/` | `day`, `subject`, `subject email`, `paragraph1..3`, `product images`, `prompt`, `images in email`, `attachments`, `status` |
+| **Social media** | `social-media/` | `day`, `subject`, `content`, `product images`, `prompt`, `images`, `status` |
 
 ## Importing
 
 1. In n8n, go to **Workflows** → **Import from File**
 2. Select the `.json` file you want
-3. Reattach credentials on each node (see below)
-4. Replace the `YOUR_*` placeholders with real values
+3. Attach your own credentials on each node
+4. Replace the `YOUR_*` placeholders — the folder README lists which ones apply
 
-## Configuration
+## External services
 
-### Credentials
+Google Sheets · Google Drive · Gmail · Facebook Graph API · LinkedIn ·
+Instagram Graph · Telegram · OpenRouter · Tavily · kie.ai ·
+USDA FoodData Central · Google Autosuggest
 
-Credential references were stripped from these files. After importing, create
-and attach your own in n8n for the Google Sheets, Google Drive, Gmail, Facebook
-Graph API, Telegram, OpenRouter and Tavily nodes.
+## A note on secrets
 
-### Placeholders to replace
+All credentials, API keys, Google document IDs, social account IDs, email
+addresses and webhook IDs were replaced with `YOUR_*` placeholders before
+publishing. Credential blocks were stripped from every node.
 
-| Placeholder | Meaning | Appears in |
-|---|---|---|
-| `YOUR_GOOGLE_SHEET_ID` | ID of the orchestrating Google Sheet (the "Marketing plan" spreadsheet) | all |
-| `YOUR_GOOGLE_FILE_ID` | Drive file/folder IDs (product images, catalogue, upload folder) | `send-email`, `email`, `social-media` |
-| `YOUR_KIE_AI_API_KEY` | kie.ai API key, sent as an `Authorization: Bearer` header | `email`, `social-media` |
-| `YOUR_LINKEDIN_ACCESS_TOKEN` | LinkedIn OAuth access token | `social-media` |
-| `YOUR_USDA_API_KEY` | USDA FoodData Central API key | `seo` |
-| `YOUR_ALIBABA_SHOP` | Alibaba trustpass storefront subdomain | `social-media` |
-| `your-email@example.com` | Sender / recipient addresses | `send-email`, `email`, `social-media` |
+Two things to be aware of if you adapt these workflows:
 
-### Webhooks
-
-Webhook nodes have had their `webhookId` and `path` reset to a null UUID
-(`00000000-0000-0000-0000-000000000000`). n8n generates fresh IDs on import.
-
-These webhooks carry **no authentication** by default — anyone who knows the URL
-can trigger the workflow. Enable Header Auth on the webhook node before running
-them in production.
-
-### Google Sheet structure
-
-The workflows read from and write to these tabs within a single spreadsheet:
-
-- **Email** — `day`, `subject`, `subject email`, `paragraph1..3`, `product images`, `prompt`, `images in email`, `attachments`, `status`
-- **KEY WORD SEO** — `KW_ID`, `Pillar Topic`, `Seed`, `Geolocation`, `Tavily`, `Search Intent`, `Buyer`, `Title`, `primary`, `secondary`, `Meta`, `link`, `status`
-- **Topic** — `Topic`, `List_keyword`, `Pillar Topic`, `Seed`
-
-The `status` column acts as a queue: workflows filter for `Send` / `Processing`,
-then update rows to `Sent` / `Finished` once processing completes.
+- Several API keys were originally typed directly into HTTP Request headers
+  rather than stored as n8n credentials. n8n redacts credentials on export but
+  not plain header values, so those had to be scrubbed by hand. Use Header Auth
+  credentials instead.
+- Every webhook trigger here is unauthenticated. Anyone with the URL can start
+  the workflow. Enable Header Auth before exposing them.
