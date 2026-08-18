@@ -29,6 +29,20 @@ spreadsheet — where a `status` column acts as the work queue.
 3. Attach your own credentials on each node
 4. Replace the `YOUR_*` placeholders — the folder README lists which ones apply
 
+## Triggering a workflow
+
+Four of the five are started by POSTing the spreadsheet row you want processed:
+
+```bash
+curl -X POST https://<your-n8n-host>/webhook/<webhook-id>/<path>   -H "Content-Type: application/json"   -d '{"row_number": 12}'
+```
+
+The workflow flips that row to `Processing`, does its work, then writes back
+`Finished` (or `Sent`). Reading the `status` column tells you where any row is.
+
+`send-email` is the exception — it takes no payload and instead picks up every
+row currently marked `Send`, so it can be run on a schedule or by hand.
+
 ## External services
 
 Google Sheets · Google Drive · Gmail · Facebook Graph API · LinkedIn ·
