@@ -1,0 +1,21 @@
+# Raw n8n exports — these still contain credentials and account IDs.
+# Redact before adding anything from here to the repository.
+*.raw.json
+raw/
+export/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
