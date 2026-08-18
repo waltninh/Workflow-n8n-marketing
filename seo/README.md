@@ -65,5 +65,9 @@ Replace these placeholders after importing:
 
 Credentials to attach: Google Sheets, Google Drive, OpenRouter, Tavily.
 
+Both webhook paths were zeroed to `00000000-0000-0000-0000-000000000000`.
+n8n assigns a new path on import, so read the real URL off the webhook node
+afterwards rather than assuming the one in the file.
+
 Both webhooks are unauthenticated as exported — enable Header Auth before
 exposing them.

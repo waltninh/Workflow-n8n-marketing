@@ -66,5 +66,10 @@ The kie.ai key is currently a plain header value on the HTTP Request nodes.
 Moving it into a Header Auth credential is worth doing — n8n then redacts it
 automatically on export.
 
+Unlike the other folders, these two kept their descriptive webhook paths —
+`/email` and `/sendemail` — so the intended endpoint name stays readable. Only
+the internal `webhookId` was zeroed, and since it forms part of the production
+URL, the full address still changes on import.
+
 Both webhooks are unauthenticated as exported — enable Header Auth before
 exposing them. `POST /sendemail` in particular is an easy path to guess.

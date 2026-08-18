@@ -65,6 +65,9 @@ Two things worth changing before production use:
 - LinkedIn access tokens expire roughly every 60 days, so a hardcoded one will
   fail silently partway through a campaign.
 
+The webhook path was zeroed to `00000000-0000-0000-0000-000000000000`; n8n
+assigns a new one on import, so read the real URL off the node afterwards.
+
 The webhook is unauthenticated as exported — enable Header Auth before exposing
 it. Since this workflow publishes to live social accounts, that matters more
 here than anywhere else in this repository.

@@ -37,9 +37,10 @@ USDA FoodData Central · Google Autosuggest
 
 ## A note on secrets
 
-All credentials, API keys, Google document IDs, social account IDs, email
-addresses and webhook IDs were replaced with `YOUR_*` placeholders before
-publishing. Credential blocks were stripped from every node.
+All credentials, API keys, Google document IDs, social account IDs and email
+addresses were replaced with `YOUR_*` placeholders before publishing.
+Credential blocks were stripped from every node, and every `webhookId` was
+zeroed out so that n8n issues a fresh one on import.
 
 Two things to be aware of if you adapt these workflows:
 
