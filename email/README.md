@@ -72,4 +72,4 @@ the internal `webhookId` was zeroed, and since it forms part of the production
 URL, the full address still changes on import.
 
 Both webhooks are unauthenticated as exported — enable Header Auth before
-exposing them. `POST /sendemail` in particular is an easy path to guess.
+exposing them. `POST /sendemail` in particular is an easy path to guess.#nct
